@@ -1,0 +1,34 @@
+# .github/workflows/retire-overrides.yml — the only file a repository needs.
+# Pin the reusable workflow to a release tag (vX.Y.Z) or a release line branch (release/X.Y).
+name: retire-overrides
+
+on:
+  schedule:
+    - cron: "23 5 * * *" # daily
+  push:
+    branches: [main]
+    paths:
+      - "**/package.json"
+      - "**/package-lock.json"
+      - "**/npm-shrinkwrap.json"
+      - "**/pnpm-lock.yaml"
+      - "**/pnpm-workspace.yaml"
+      - ".github/retire-overrides.yml"
+  pull_request:
+    paths:
+      - "**/package.json"
+      - "**/package-lock.json"
+      - "**/npm-shrinkwrap.json"
+      - "**/pnpm-lock.yaml"
+      - "**/pnpm-workspace.yaml"
+      - ".github/retire-overrides.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retire-overrides:
+    uses: Sumedhbhat/retire-overrides/.github/workflows/retire-overrides.yml@v0.1.0
+    secrets:
+      token: ${{ secrets.RETIRE_OVERRIDES_TOKEN }}

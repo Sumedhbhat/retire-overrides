@@ -1,0 +1,23 @@
+# Policy: security fixes ship immediately (cooldown never applies to them);
+# every other new version waits 14 days after release.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 14
+    labels: [dependencies]
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directories: [/, /.github/workflows]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    labels: [dependencies]

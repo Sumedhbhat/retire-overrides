@@ -1,0 +1,76 @@
+name: retire-overrides
+description: Add security overrides only when nothing else fixes an advisory, and remove them once upstream no longer needs them.
+author: Sumedh Bhat
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  command:
+    description: "`check` (dry run, read-only) or `publish` (open/update PRs and issues on GitHub)."
+    default: check
+  token:
+    description: Token used by `publish` to push branches and open PRs/issues. Use a GitHub App or fine-grained token so generated PRs trigger CI. Not needed for `check`.
+    default: ""
+  working-directory:
+    description: Repository checkout to evaluate. It must have full history (actions/checkout with fetch-depth 0).
+    default: .
+  config:
+    description: Config file path relative to the repository (default .github/retire-overrides.yml when present).
+    default: ""
+  fail-on:
+    description: Comma-separated statuses that fail the step, e.g. BLOCKED,REVIEW_NEEDED,VULN_BLOCKED,UNSUPPORTED.
+    default: ""
+  args:
+    description: Extra CLI arguments, for example `--now 2026-03-01T00:00:00Z`.
+    default: ""
+  setup-node:
+    description: Install Node.js 24 and enable Corepack (so the repository's pinned pnpm/npm version is used). Set to false if the job already did.
+    default: "true"
+
+outputs:
+  report:
+    description: Path of the machine-readable JSON report.
+    value: ${{ steps.run.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - if: inputs.setup-node == 'true'
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+    - if: inputs.setup-node == 'true'
+      shell: bash
+      run: corepack enable
+    - id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        RETIRE_OVERRIDES_REF: ${{ env.RETIRE_OVERRIDES_REF || github.action_ref }}
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_ARGS: ${{ inputs.args }}
+        INPUT_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+        report="$RUNNER_TEMP/retire-overrides-report.json"
+        echo "report=$report" >> "$GITHUB_OUTPUT"
+        args=("$INPUT_COMMAND" --repo . --json "$report" --markdown "$GITHUB_STEP_SUMMARY")
+        [[ -n "$INPUT_CONFIG" ]] && args+=(--config "$INPUT_CONFIG")
+        [[ -n "$INPUT_FAIL_ON" ]] && args+=(--fail-on "$INPUT_FAIL_ON")
+        if [[ "$INPUT_COMMAND" == publish ]]; then
+          if [[ -z "$INPUT_TOKEN" ]]; then
+            echo "::error::publish needs the token input (GitHub App or fine-grained token)"
+            exit 2
+          fi
+          args+=(--github)
+          export GH_TOKEN="$INPUT_TOKEN"
+        else
+          # A read-only check never needs, or sees, write credentials.
+          unset GH_TOKEN GITHUB_TOKEN
+        fi
+        # shellcheck disable=SC2206
+        extra=($INPUT_ARGS)
+        node "$GITHUB_ACTION_PATH/dist/cli.mjs" "${args[@]}" "${extra[@]}"

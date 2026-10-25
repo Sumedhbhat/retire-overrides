@@ -1,0 +1,40 @@
+{
+  "name": "retire-overrides",
+  "version": "0.1.0",
+  "description": "Adds security overrides only when nothing else fixes an advisory, and proves when they can be removed.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "retire-overrides": "dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "action.yml",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check-dist": "node scripts/build.mjs --check",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --test-concurrency=4 'test/**/*.test.ts'",
+    "test:unit": "node --test 'test/unit/**/*.test.ts'",
+    "cli": "node src/cli.ts",
+    "test:dist": "RETIRE_OVERRIDES_CLI=dist/cli.mjs node --test test/scenarios/cli.test.ts",
+    "lint:workflows": "actionlint"
+  },
+  "dependencies": {
+    "semver": "7.8.5",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/semver": "7.8.0",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}

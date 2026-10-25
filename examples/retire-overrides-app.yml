@@ -1,0 +1,23 @@
+# Same as retire-overrides.yml, authenticating with a GitHub App instead of a token.
+name: retire-overrides
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  push:
+    branches: [main]
+    paths: ["**/package.json", "**/package-lock.json", "**/pnpm-lock.yaml", "**/pnpm-workspace.yaml", ".github/retire-overrides.yml"]
+  pull_request:
+    paths: ["**/package.json", "**/package-lock.json", "**/pnpm-lock.yaml", "**/pnpm-workspace.yaml", ".github/retire-overrides.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retire-overrides:
+    uses: Sumedhbhat/retire-overrides/.github/workflows/retire-overrides.yml@v0.1.0
+    with:
+      app-id: ${{ vars.RETIRE_OVERRIDES_APP_ID }}
+    secrets:
+      app-private-key: ${{ secrets.RETIRE_OVERRIDES_APP_PRIVATE_KEY }}
