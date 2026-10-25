@@ -9,6 +9,7 @@ import {
   GitHubAdvisoryProvider,
   NpmBulkAdvisoryProvider,
 } from "./advisories/providers.ts";
+import { OsvAdvisoryProvider } from "./advisories/osv.ts";
 import { ConfigError, loadConfig } from "./config.ts";
 import type { Report } from "./engine/report.ts";
 import { evaluate } from "./engine/run.ts";
@@ -188,6 +189,9 @@ async function runEvaluation(input: {
   try {
     const registry = new NpmRegistryClient(registryUrl, recorder ? { recorder } : {});
     const providers: AdvisoryProvider[] = config.advisoryProviders.map((id) => {
+      if (id === "osv" && !values.metadata) {
+        return new OsvAdvisoryProvider(recorder ? { recorder } : {});
+      }
       if (id === "github" && !values.metadata) {
         const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
         return new GitHubAdvisoryProvider({

@@ -21,7 +21,7 @@ export interface Config {
   keep: EntryMatcher[];
   /** Explicit opt-in: existing overrides this tool did not create, which it may remove automatically. */
   manage: EntryMatcher[];
-  advisoryProviders: Array<"npm" | "github">;
+  advisoryProviders: Array<"npm" | "github" | "osv">;
   ecosystems?: EcosystemId[];
   autoMerge: boolean;
   mergeMethod: "squash" | "merge" | "rebase";
@@ -91,7 +91,7 @@ export function parseConfig(raw: unknown, source = "config"): Config {
   if (data.manage !== undefined) config.manage = matchers(data.manage, "manage", source);
   if (data.advisoryProviders !== undefined) {
     const list = stringList(data.advisoryProviders, "advisoryProviders", source);
-    for (const p of list) if (p !== "npm" && p !== "github") throw new ConfigError(`${source}: unknown advisory provider "${p}"`);
+    for (const p of list) if (p !== "npm" && p !== "github" && p !== "osv") throw new ConfigError(`${source}: unknown advisory provider "${p}"`);
     if (list.length === 0) throw new ConfigError(`${source}: advisoryProviders must not be empty`);
     config.advisoryProviders = list as Config["advisoryProviders"];
   }

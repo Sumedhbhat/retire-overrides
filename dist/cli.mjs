@@ -1608,14 +1608,14 @@ var require_valid2 = __commonJS({
   "node_modules/semver/ranges/valid.js"(exports, module) {
     "use strict";
     var Range = require_range();
-    var validRange2 = (range, options) => {
+    var validRange = (range, options) => {
       try {
         return new Range(range, options).range || "*";
       } catch (er) {
         return null;
       }
     };
-    module.exports = validRange2;
+    module.exports = validRange;
   }
 });
 
@@ -1973,7 +1973,7 @@ var require_semver2 = __commonJS({
     var maxSatisfying2 = require_max_satisfying();
     var minSatisfying = require_min_satisfying();
     var minVersion = require_min_version();
-    var validRange2 = require_valid2();
+    var validRange = require_valid2();
     var outside = require_outside();
     var gtr = require_gtr();
     var ltr = require_ltr();
@@ -2012,7 +2012,7 @@ var require_semver2 = __commonJS({
       maxSatisfying: maxSatisfying2,
       minSatisfying,
       minVersion,
-      validRange: validRange2,
+      validRange,
       outside,
       gtr,
       ltr,
@@ -9417,83 +9417,105 @@ function run(command, args, options) {
   });
 }
 
-// src/versions.ts
+// src/schemes.ts
 var import_semver = __toESM(require_semver2(), 1);
 var LOOSE = { includePrerelease: true };
+var SEMVER = {
+  id: "semver",
+  valid: (v) => import_semver.default.valid(v) !== null,
+  compare: (a, b) => import_semver.default.compare(a, b),
+  isPrerelease: (v) => import_semver.default.prerelease(v) !== null,
+  satisfies(version, range) {
+    try {
+      return import_semver.default.satisfies(version, range, LOOSE);
+    } catch {
+      return false;
+    }
+  },
+  validRange(range) {
+    try {
+      return import_semver.default.validRange(range, LOOSE) !== null;
+    } catch {
+      return false;
+    }
+  },
+  compatibleLine(version) {
+    const v = import_semver.default.parse(version);
+    if (v === null) return version;
+    return v.major > 0 ? String(v.major) : `0.${v.minor}`;
+  },
+  interval({ gte, lt, lte }) {
+    const parts = [gte ? `>=${gte}` : "", lt ? `<${lt}` : "", lte ? `<=${lte}` : ""].filter((p) => p !== "");
+    return parts.length > 0 ? parts.join(" ") : "*";
+  },
+  exact: (v) => v
+};
+var schemes = /* @__PURE__ */ new Map();
+function schemeFor(ecosystem) {
+  return schemes.get(ecosystem) ?? SEMVER;
+}
+
+// src/versions.ts
 var DAY_MS = 864e5;
-function isAffectedBy(version, advisory) {
-  return advisory.ranges.some((range) => satisfies(version, range));
+function isAffectedBy(version, advisory, scheme = SEMVER) {
+  return advisory.ranges.some((range) => scheme.satisfies(version, range));
 }
-function affectingAdvisories(version, advisories) {
-  return advisories.filter((a) => isAffectedBy(version, a));
+function affectingAdvisories(version, advisories, scheme = SEMVER) {
+  return advisories.filter((a) => isAffectedBy(version, a, scheme));
 }
-function satisfies(version, range) {
-  try {
-    return import_semver.default.satisfies(version, range, LOOSE);
-  } catch {
-    return false;
-  }
+function satisfies(version, range, scheme = SEMVER) {
+  return scheme.satisfies(version, range);
 }
-function validRange(range) {
-  try {
-    return import_semver.default.validRange(range, LOOSE) !== null;
-  } catch {
-    return false;
-  }
-}
-function parseSpec(name, spec) {
+function parseSpec(name, spec, scheme = SEMVER) {
+  if (scheme.id !== "semver") return scheme.validRange(spec) ? { name, range: spec } : null;
   if (spec.startsWith("npm:")) {
     const rest = spec.slice(4);
     const at = rest.lastIndexOf("@");
     if (at <= 0) return { name: rest, range: "*" };
-    return parseSpec(rest.slice(0, at), rest.slice(at + 1));
+    return parseSpec(rest.slice(0, at), rest.slice(at + 1), scheme);
   }
   const range = spec.trim() === "" || spec === "latest" ? null : spec;
-  if (range === null || !validRange(range)) return null;
+  if (range === null || !scheme.validRange(range)) return null;
   return { name, range };
 }
-function permittedVulnerableVersions(range, metadata, advisories) {
+function permittedVulnerableVersions(range, metadata, advisories, scheme = SEMVER) {
   return Object.keys(metadata.versions).filter(
-    (v) => satisfies(v, range) && advisories.some((a) => isAffectedBy(v, a))
+    (v) => scheme.satisfies(v, range) && advisories.some((a) => isAffectedBy(v, a, scheme))
   );
 }
-function availableVersions(metadata, now) {
-  return Object.keys(metadata.versions).filter((v) => import_semver.default.valid(v) !== null).filter((v) => {
+function availableVersions(metadata, now, scheme = SEMVER) {
+  return Object.keys(metadata.versions).filter((v) => scheme.valid(v)).filter((v) => {
     const t = metadata.time[v];
     return t === void 0 || Date.parse(t) <= now.getTime();
-  }).sort(import_semver.default.compare);
+  }).sort((a, b) => scheme.compare(a, b));
 }
-function maxSatisfying(metadata, range, now) {
-  const candidates = availableVersions(metadata, now).filter(
-    (v) => import_semver.default.prerelease(v) === null && satisfies(v, range)
-  );
+function maxSatisfying(metadata, range, now, scheme = SEMVER) {
+  const candidates = availableVersions(metadata, now, scheme).filter((v) => !scheme.isPrerelease(v) && scheme.satisfies(v, range));
   return candidates.at(-1) ?? null;
 }
 function ageInDays(published, now) {
   return (now.getTime() - Date.parse(published)) / DAY_MS;
 }
-function compatibleLine(version) {
-  const v = import_semver.default.parse(version);
-  if (v === null) return version;
-  if (v.major > 0) return String(v.major);
-  return `0.${v.minor}`;
+function compatibleLine(version, scheme = SEMVER) {
+  return scheme.compatibleLine(version);
 }
-function isMajorChange(from, to) {
-  return compatibleLine(from) !== compatibleLine(to);
+function isMajorChange(from, to, scheme = SEMVER) {
+  return scheme.compatibleLine(from) !== scheme.compatibleLine(to);
 }
 function chooseFixedVersion(input) {
   const { metadata, advisories, current, now, minAgeDays } = input;
-  const fixed = availableVersions(metadata, now).filter((v) => {
+  const scheme = input.scheme ?? SEMVER;
+  const fixed = availableVersions(metadata, now, scheme).filter((v) => {
     const meta = metadata.versions[v];
-    return import_semver.default.prerelease(v) === null && !meta?.deprecated && import_semver.default.gte(v, current) && v !== current && advisories.every((a) => !isAffectedBy(v, a));
+    return !scheme.isPrerelease(v) && !meta?.deprecated && scheme.compare(v, current) > 0 && advisories.every((a) => !isAffectedBy(v, a, scheme));
   });
   if (fixed.length === 0) return null;
   const mature = (v) => {
     const t = metadata.time[v];
     return t !== void 0 && ageInDays(t, now) >= minAgeDays;
   };
-  const line = compatibleLine(current);
-  const sameLine = fixed.filter((v) => compatibleLine(v) === line);
+  const line = scheme.compatibleLine(current);
+  const sameLine = fixed.filter((v) => scheme.compatibleLine(v) === line);
   if (sameLine.length > 0) {
     const newestMature = sameLine.filter(mature).at(-1);
     const version2 = newestMature ?? sameLine[0];
@@ -10863,6 +10885,168 @@ function canonicalId(advisory) {
   return advisory.id.toLowerCase();
 }
 
+// src/advisories/osv.ts
+var OSV_ECOSYSTEM = {
+  npm: "npm",
+  pnpm: "npm",
+  bun: "npm",
+  yarn: "npm",
+  uv: "PyPI",
+  cargo: "crates.io",
+  go: "Go",
+  maven: "Maven",
+  gradle: "Maven",
+  nuget: "NuGet"
+};
+var BATCH_VERSION_LIMIT = 50;
+var OsvAdvisoryProvider = class {
+  id = "osv";
+  apiUrl;
+  fetchImpl;
+  recorder;
+  details = /* @__PURE__ */ new Map();
+  constructor(options = {}) {
+    this.apiUrl = (options.apiUrl ?? "https://api.osv.dev").replace(/\/+$/, "");
+    this.fetchImpl = options.fetch ?? fetch;
+    this.recorder = options.recorder;
+  }
+  supports(ecosystem) {
+    return OSV_ECOSYSTEM[ecosystem] !== void 0;
+  }
+  async advisoriesFor(ecosystem, versions) {
+    const osvEcosystem = OSV_ECOSYSTEM[ecosystem];
+    if (!osvEcosystem) throw new AdvisoryDataUnavailableError(this.id, `OSV does not cover ${ecosystem}`);
+    const scheme = schemeFor(ecosystem);
+    const result = /* @__PURE__ */ new Map();
+    const small = [...versions].filter(([, v]) => v.length <= BATCH_VERSION_LIMIT);
+    const large = [...versions].filter(([, v]) => v.length > BATCH_VERSION_LIMIT);
+    const ids = /* @__PURE__ */ new Map();
+    const queries = small.flatMap(([name, list]) => list.map((version) => ({ name, version })));
+    for (let i = 0; i < queries.length; i += 1e3) {
+      const chunk = queries.slice(i, i + 1e3);
+      const answer = await this.post(
+        "/v1/querybatch",
+        { queries: chunk.map((q) => ({ package: { name: q.name, ecosystem: osvEcosystem }, version: q.version })) }
+      );
+      if (!Array.isArray(answer.results) || answer.results.length !== chunk.length) {
+        throw new AdvisoryDataUnavailableError(this.id, "querybatch returned a different number of results than queries");
+      }
+      for (const [j, r] of answer.results.entries()) {
+        const q = chunk[j];
+        const set = ids.get(q.name) ?? /* @__PURE__ */ new Set();
+        for (const v of r.vulns ?? []) set.add(v.id);
+        if (r.next_page_token) large.push([q.name, versions.get(q.name) ?? []]);
+        ids.set(q.name, set);
+      }
+    }
+    for (const [name] of small) {
+      if (large.some(([n]) => n === name)) continue;
+      const vulns = await Promise.all([...ids.get(name) ?? []].map((id) => this.detail(id)));
+      result.set(name, this.toAdvisories(name, osvEcosystem, vulns, scheme, versions.get(name) ?? []));
+    }
+    for (const [name] of new Map(large)) {
+      const vulns = [];
+      let pageToken;
+      do {
+        const page = await this.post("/v1/query", {
+          package: { name, ecosystem: osvEcosystem },
+          ...pageToken ? { page_token: pageToken } : {}
+        });
+        vulns.push(...page.vulns ?? []);
+        pageToken = page.next_page_token;
+      } while (pageToken);
+      result.set(name, this.toAdvisories(name, osvEcosystem, vulns, scheme, versions.get(name) ?? []));
+    }
+    for (const [name, list] of result) this.recorder?.recordAdvisories(name, list);
+    return result;
+  }
+  toAdvisories(name, ecosystem, vulns, scheme, versions) {
+    const out = [];
+    for (const vuln of vulns) {
+      if (vuln.withdrawn) continue;
+      const ranges = [];
+      let unusable = false;
+      for (const affected of vuln.affected ?? []) {
+        if (affected.package?.ecosystem !== ecosystem || !sameName(affected.package.name, name, ecosystem)) continue;
+        const usable = (affected.ranges ?? []).filter((r) => r.type === "SEMVER" || r.type === "ECOSYSTEM");
+        for (const r of usable) ranges.push(...eventsToRanges(r.events, scheme));
+        if (usable.length === 0) {
+          if (affected.versions && affected.versions.length > 0) ranges.push(...affected.versions.map((v) => scheme.exact(v)));
+          else unusable = true;
+        }
+      }
+      if (unusable && ranges.length === 0) {
+        throw new AdvisoryDataUnavailableError(this.id, `${vuln.id} gives no registry version ranges for ${name}`);
+      }
+      if (ranges.length === 0) continue;
+      const ghsa = [vuln.id, ...vuln.aliases ?? []].find((a) => a.startsWith("GHSA-"));
+      const id = ghsa ?? vuln.id;
+      const advisory = {
+        id,
+        aliases: [vuln.id, ...vuln.aliases ?? []].filter((a) => a !== id),
+        package: name,
+        ranges: [...new Set(ranges)]
+      };
+      if (vuln.summary) advisory.title = vuln.summary;
+      if (vuln.database_specific?.severity) advisory.severity = vuln.database_specific.severity.toLowerCase();
+      advisory.url = `https://osv.dev/vulnerability/${vuln.id}`;
+      if (versions.length === 0 || versions.some((v) => isAffectedBy(v, advisory, scheme))) out.push(advisory);
+    }
+    return out.sort((a, b) => a.id.localeCompare(b.id));
+  }
+  detail(id) {
+    let cached = this.details.get(id);
+    if (!cached) {
+      cached = this.get(`/v1/vulns/${encodeURIComponent(id)}`);
+      this.details.set(id, cached);
+    }
+    return cached;
+  }
+  async get(path) {
+    return this.call(path, { headers: { accept: "application/json" } });
+  }
+  async post(path, body) {
+    return this.call(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  }
+  async call(path, init) {
+    let response;
+    try {
+      response = await this.fetchImpl(`${this.apiUrl}${path}`, init);
+    } catch (error) {
+      throw new AdvisoryDataUnavailableError(this.id, `request to ${path} failed: ${String(error)}`);
+    }
+    if (!response.ok) throw new AdvisoryDataUnavailableError(this.id, `${path} returned HTTP ${response.status}`);
+    return await response.json();
+  }
+};
+function eventsToRanges(events, scheme) {
+  const ranges = [];
+  let start;
+  let open = false;
+  for (const event of events) {
+    if (event.introduced !== void 0) {
+      start = event.introduced === "0" ? void 0 : event.introduced;
+      open = true;
+    } else if (open && event.fixed !== void 0) {
+      ranges.push(scheme.interval({ ...start ? { gte: start } : {}, lt: event.fixed }));
+      open = false;
+    } else if (open && event.last_affected !== void 0) {
+      ranges.push(scheme.interval({ ...start ? { gte: start } : {}, lte: event.last_affected }));
+      open = false;
+    } else if (open && event.limit !== void 0) {
+      ranges.push(scheme.interval({ ...start ? { gte: start } : {}, lt: event.limit }));
+      open = false;
+    }
+  }
+  if (open) ranges.push(scheme.interval(start ? { gte: start } : {}));
+  return ranges;
+}
+function sameName(a, b, ecosystem) {
+  if (ecosystem !== "PyPI") return a === b;
+  const norm = (n) => n.toLowerCase().replace(/[-_.]+/g, "-");
+  return norm(a) === norm(b);
+}
+
 // src/config.ts
 var import_yaml2 = __toESM(require_dist(), 1);
 import { readFile as readFile6 } from "node:fs/promises";
@@ -10924,7 +11108,7 @@ function parseConfig(raw, source = "config") {
   if (data.manage !== void 0) config.manage = matchers(data.manage, "manage", source);
   if (data.advisoryProviders !== void 0) {
     const list = stringList(data.advisoryProviders, "advisoryProviders", source);
-    for (const p of list) if (p !== "npm" && p !== "github") throw new ConfigError(`${source}: unknown advisory provider "${p}"`);
+    for (const p of list) if (p !== "npm" && p !== "github" && p !== "osv") throw new ConfigError(`${source}: unknown advisory provider "${p}"`);
     if (list.length === 0) throw new ConfigError(`${source}: advisoryProviders must not be empty`);
     config.advisoryProviders = list;
   }
@@ -11266,7 +11450,7 @@ var EngineContext = class {
       const advisories = answer.get(name);
       if (advisories === void 0) throw new Error(`advisory provider returned no answer for ${name}`);
       for (const version of list) {
-        for (const a of affectingAdvisories(version, advisories)) findings.push({ name, version, advisory: a.id });
+        for (const a of affectingAdvisories(version, advisories, schemeFor(ecosystem))) findings.push({ name, version, advisory: a.id });
       }
     }
     return findings;
@@ -11305,9 +11489,6 @@ function findingKey(f) {
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
-
-// src/engine/fixes.ts
-var import_semver5 = __toESM(require_semver2(), 1);
 
 // src/engine/identity.ts
 import { createHash } from "node:crypto";
@@ -11608,6 +11789,7 @@ function worst(a, b) {
 // src/engine/removal.ts
 async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, projectBlockers) {
   const identity = removalIdentity(entry.ecosystem, entry.file, entry.selector);
+  const sch = schemeFor(entry.ecosystem);
   const { intent, provenance } = await intentAndProvenance(ctx, adapter, project, baseDir, entry);
   const report = {
     identity,
@@ -11683,7 +11865,7 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
     const governed = instance.paths.filter((p) => adapter.overrideApplies(entry, p));
     const parents = instance.pathsTruncated ? "all" : new Set(governed.map((p) => parentKey(p.steps.at(-2), p.importer)));
     governedParents.set(instance.nodeKey, parents);
-    const hits = affectingAdvisories(instance.version, advisories).map((a) => a.id);
+    const hits = affectingAdvisories(instance.version, advisories, sch).map((a) => a.id);
     instances.push({
       version: instance.version,
       affectedBy: hits,
@@ -11714,15 +11896,15 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
         block("constraint-unknown", `${parentLabel} has no recorded range for ${edge.as}`);
         continue;
       }
-      const spec = parseSpec(edge.as, declared);
+      const spec = parseSpec(edge.as, declared, sch);
       if (spec === null) {
         block("constraint-unparseable", `${parentLabel} declares ${edge.as}@"${declared}", which is not a registry range`);
         continue;
       }
       const peer = await ctx.isPeerEdge(edge.parent, edge.as).catch(() => false);
-      let permits = permittedVulnerableVersions(spec.range, targetMeta, advisories);
+      let permits = permittedVulnerableVersions(spec.range, targetMeta, advisories, sch);
       if (peer) {
-        const pick = maxSatisfying(targetMeta, spec.range, ctx.now);
+        const pick = maxSatisfying(targetMeta, spec.range, ctx.now, sch);
         permits = pick !== null && permits.includes(pick) ? [pick] : [];
       }
       constraints.push({ parent: parentLabel, dependency: edge.as, range: declared, permitsVulnerable: permits, ...peer ? { peer: true } : {} });
@@ -11732,7 +11914,7 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
           `${parentLabel} declares ${edge.as}@${declared}, which still permits vulnerable ${summarizeVersions(permits)}`
         );
         if (edge.parent.importer === void 0) {
-          const context = await upstreamContext(ctx, edge.parent.name, edge.as).catch(() => void 0);
+          const context = await upstreamContext(ctx, entry.ecosystem, edge.parent.name, edge.as).catch(() => void 0);
           if (context) upstream.push(context);
         }
       }
@@ -11774,7 +11956,7 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
     }
     changed.push(evidence);
     const previous = [...before.nodes.values()].filter((n) => n.name === name && n.importer === void 0).map((n) => n.version);
-    if (previous.length > 0 && previous.every((p) => isMajorChange(p, version))) {
+    if (previous.length > 0 && previous.every((p) => isMajorChange(p, version, sch))) {
       blockers.push(`${name} moves from ${[...new Set(previous)].join(", ")} to ${version}, a major-version change`);
     }
   }
@@ -11822,9 +12004,10 @@ function summarizeVersions(versions) {
   const shown = versions.slice(0, 5).join(", ");
   return versions.length > 5 ? `${shown} and ${versions.length - 5} more` : shown;
 }
-async function upstreamContext(ctx, parent, dep) {
+async function upstreamContext(ctx, ecosystem, parent, dep) {
   const meta = await ctx.package(parent);
-  const latest = availableVersions(meta, ctx.now).filter((v2) => !v2.includes("-")).at(-1);
+  const sch = schemeFor(ecosystem);
+  const latest = availableVersions(meta, ctx.now, sch).filter((v2) => !sch.isPrerelease(v2)).at(-1);
   if (latest === void 0) return `${parent}: no published release found`;
   const v = meta.versions[latest];
   const range = v?.dependencies[dep] ?? v?.optionalDependencies[dep] ?? v?.peerDependencies[dep];
@@ -11853,6 +12036,7 @@ async function planGroup(ctx, adapter, project, locked, lockedFindings, base, en
   const advisoryIds = [...new Set(group.findings.map((f) => f.advisory))].sort();
   const identity = fixIdentity(project.ecosystem, project.manifest, [group.name], advisoryIds);
   const groupKey = fixGroupKey(project.ecosystem, project.manifest, [group.name]);
+  const sch = schemeFor(project.ecosystem);
   const vulnerable = instancesOf(locked, group.name).filter((i) => group.findings.some((f) => f.version === i.version));
   const report = {
     identity,
@@ -11887,14 +12071,14 @@ async function planGroup(ctx, adapter, project, locked, lockedFindings, base, en
     report.reasons.push({ code: "existing-pr", message: `${deferral.author} already has an open PR touching ${group.name}: ${deferral.url}` });
     return { report, conclusive: [] };
   }
-  if (!vulnerable.some((i) => chooseFixedVersion({ metadata: meta, advisories, current: i.version, now: ctx.now, minAgeDays: 0 }) !== null)) {
+  if (!vulnerable.some((i) => chooseFixedVersion({ metadata: meta, advisories, current: i.version, now: ctx.now, minAgeDays: 0, scheme: sch }) !== null)) {
     report.reasons.push({
       code: "no-fixed-version",
       message: `no published ${group.name} release is outside every known affected range; an override cannot help \u2014 replace the package or assess reachability`
     });
     return { report, conclusive: [groupKey] };
   }
-  const plain = (version) => !advisories.some((a) => isAffectedBy(version, a));
+  const plain = (version) => !advisories.some((a) => isAffectedBy(version, a, sch));
   const verifyInput = { ctx, adapter, project, lockedFindings, base, name: group.name, advisories };
   const planner = { ctx, adapter, project };
   const strategies = [
@@ -11961,7 +12145,7 @@ async function verify(input, candidate) {
     return verdict;
   }
   ctx.seen(outcome.graph);
-  const still = instancesOf(outcome.graph, input.name).filter((i) => affectingAdvisories(i.version, input.advisories).length > 0);
+  const still = instancesOf(outcome.graph, input.name).filter((i) => affectingAdvisories(i.version, input.advisories, schemeFor(project.ecosystem)).length > 0);
   for (const i of still) {
     verdict.reasons.push({
       code: "still-vulnerable",
@@ -11989,7 +12173,7 @@ async function verify(input, candidate) {
     }
     verdict.changed.push(evidence);
     const previous = [...input.base.nodes.values()].filter((n) => n.name === name && n.importer === void 0).map((n) => n.version);
-    if (previous.length > 0 && previous.every((p) => isMajorChange(p, version))) verdict.major = true;
+    if (previous.length > 0 && previous.every((p) => isMajorChange(p, version, schemeFor(project.ecosystem)))) verdict.major = true;
   }
   if (verdict.major) verdict.blockers.push("major-version change: needs human review before merging");
   if (outcome.files.length === 0) verdict.reasons.push({ code: "no-change", message: "the candidate produced no file changes" });
@@ -12004,7 +12188,7 @@ async function overrideUpdate({ ctx, adapter, project }, entries, vulnerable, me
   const writes = [];
   for (const entry of governing) {
     const current = vulnerable.find((i) => i.paths.some((p) => adapter.overrideApplies(entry, p))).version;
-    const choice = chooseFixedVersion({ metadata: meta, advisories, current, now: ctx.now, minAgeDays: ctx.config.minimumReleaseAgeDays });
+    const choice = chooseFixedVersion({ metadata: meta, advisories, current, now: ctx.now, minAgeDays: ctx.config.minimumReleaseAgeDays, scheme: schemeFor(project.ecosystem) });
     if (choice === null) return { code: "no-fixed-version", message: `no fixed release above ${current} for override ${entry.selector}` };
     writes.push({ entry, value: choice.version, major: choice.major });
   }
@@ -12034,7 +12218,7 @@ async function normalFix({ ctx, adapter, project }, graph, vulnerable, name, pla
   const refresh = [.../* @__PURE__ */ new Set([name, ...steps.flatMap((s) => s.refresh ? [s.refresh] : [])])].sort();
   if (refreshOnly && bumps.length > 0) return { code: "needs-parent-update", message: "a refresh within existing ranges is not enough" };
   if (!refreshOnly && bumps.length === 0 && refresh.length === 1) return { code: "refresh-suffices", message: "covered by lockfile-refresh" };
-  const major = bumps.some((b) => isMajorChange(b.from, b.to));
+  const major = bumps.some((b) => isMajorChange(b.from, b.to, schemeFor(project.ecosystem)));
   if (bumps.length === 0) {
     return {
       kind: "lockfile-refresh",
@@ -12070,19 +12254,20 @@ async function normalFix({ ctx, adapter, project }, graph, vulnerable, name, pla
 async function fixEdge(ctx, ecosystem, graph, edge, wanted, depth) {
   const childMeta = await ctx.package(edge.child.name);
   const childAdvisories = await ctx.allAdvisories(ecosystem, edge.child.name);
-  const ok = async (v) => !childAdvisories.some((a) => isAffectedBy(v, a)) && await wanted(v);
+  const sch = schemeFor(ecosystem);
+  const ok = async (v) => !childAdvisories.some((a) => isAffectedBy(v, a, sch)) && await wanted(v);
   const declared = await ctx.declaredRange(edge.parent, edge.as);
-  const spec = declared === void 0 ? null : parseSpec(edge.as, declared);
+  const spec = declared === void 0 ? null : parseSpec(edge.as, declared, sch);
   if (spec !== null) {
-    const best = maxSatisfying(childMeta, spec.range, ctx.now);
+    const best = maxSatisfying(childMeta, spec.range, ctx.now, sch);
     if (best !== null && await ok(best)) return [{ refresh: edge.child.name }];
   }
   if (edge.parent.importer !== void 0) {
-    const candidates = availableVersions(childMeta, ctx.now).filter(
-      (v) => import_semver5.default.prerelease(v) === null && !childMeta.versions[v]?.deprecated && import_semver5.default.gt(v, edge.child.version)
+    const candidates = availableVersions(childMeta, ctx.now, sch).filter(
+      (v) => !sch.isPrerelease(v) && !childMeta.versions[v]?.deprecated && sch.compare(v, edge.child.version) > 0
     );
-    const line = compatibleLine(edge.child.version);
-    const ordered = [...candidates.filter((v) => compatibleLine(v) === line), ...candidates.filter((v) => compatibleLine(v) !== line)];
+    const line = compatibleLine(edge.child.version, sch);
+    const ordered = [...candidates.filter((v) => compatibleLine(v, sch) === line), ...candidates.filter((v) => compatibleLine(v, sch) !== line)];
     for (const v of ordered) {
       if (await ok(v)) {
         return [{ bump: { importer: edge.parent.importer, name: edge.as, from: edge.child.version, to: v } }];
@@ -12095,9 +12280,9 @@ async function fixEdge(ctx, ecosystem, graph, edge, wanted, depth) {
   const parentOk = async (pv) => {
     const range = declaredRangeIn(parentMeta.versions[pv], edge.as);
     if (range === void 0) return true;
-    const s = parseSpec(edge.as, range);
+    const s = parseSpec(edge.as, range, sch);
     if (s === null) return false;
-    const best = maxSatisfying(childMeta, s.range, ctx.now);
+    const best = maxSatisfying(childMeta, s.range, ctx.now, sch);
     return best !== null && await ok(best);
   };
   const steps = [];
@@ -12114,7 +12299,7 @@ async function fixEdge(ctx, ecosystem, graph, edge, wanted, depth) {
 async function addOverride({ ctx, adapter, project }, graph, vulnerable, meta, advisories) {
   const choices = /* @__PURE__ */ new Map();
   for (const instance of vulnerable) {
-    const choice = chooseFixedVersion({ metadata: meta, advisories, current: instance.version, now: ctx.now, minAgeDays: ctx.config.minimumReleaseAgeDays });
+    const choice = chooseFixedVersion({ metadata: meta, advisories, current: instance.version, now: ctx.now, minAgeDays: ctx.config.minimumReleaseAgeDays, scheme: schemeFor(project.ecosystem) });
     if (choice === null) return { code: "no-fixed-version", message: `no fixed release at or above ${meta.name}@${instance.version}` };
     choices.set(instance.nodeKey, choice);
   }
@@ -12141,7 +12326,7 @@ async function addOverride({ ctx, adapter, project }, graph, vulnerable, meta, a
     writes = [...parentScopes.values()].map((p) => ({ target: { name: meta.name }, scope: [p.scope], value: p.value }));
   } else {
     const byLine = /* @__PURE__ */ new Map();
-    for (const instance of vulnerable) byLine.set(compatibleLine(instance.version), choices.get(instance.nodeKey).version);
+    for (const instance of vulnerable) byLine.set(compatibleLine(instance.version, schemeFor(project.ecosystem)), choices.get(instance.nodeKey).version);
     if (caps.versionSelector) {
       writes = [...byLine].map(([line, value]) => ({ target: { name: meta.name, range: line }, scope: [], value }));
     } else if (byLine.size === 1) {
@@ -12368,7 +12553,7 @@ function emptyBaseline() {
 }
 
 // src/metadata/server.ts
-var import_semver6 = __toESM(require_semver2(), 1);
+var import_semver5 = __toESM(require_semver2(), 1);
 import { createHash as createHash2 } from "node:crypto";
 import { createServer } from "node:http";
 import { gunzipSync, gzipSync as gzipSync2 } from "node:zlib";
@@ -12443,7 +12628,7 @@ function packument(name, pkg, now, baseUrl) {
     };
     if (pkg.time[v] !== void 0) time[v] = pkg.time[v];
   }
-  const stable = visible.filter((v) => import_semver6.default.valid(v) && import_semver6.default.prerelease(v) === null).sort(import_semver6.default.compare);
+  const stable = visible.filter((v) => import_semver5.default.valid(v) && import_semver5.default.prerelease(v) === null).sort(import_semver5.default.compare);
   const times = Object.values(time).sort();
   if (times.length > 0) {
     time.created = times[0];
@@ -13190,6 +13375,9 @@ async function runEvaluation(input) {
   try {
     const registry = new NpmRegistryClient(registryUrl, recorder ? { recorder } : {});
     const providers = config.advisoryProviders.map((id) => {
+      if (id === "osv" && !values.metadata) {
+        return new OsvAdvisoryProvider(recorder ? { recorder } : {});
+      }
       if (id === "github" && !values.metadata) {
         const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
         return new GitHubAdvisoryProvider({
