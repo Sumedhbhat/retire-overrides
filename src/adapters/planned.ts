@@ -9,6 +9,8 @@ interface Probe {
   /** Pattern that marks a native override mechanism in a matching file. */
   pattern: RegExp;
   mechanism: string;
+  /** Only probe files that have this sibling (for example yarn.lock next to package.json). */
+  sibling?: string;
 }
 
 /**
@@ -33,6 +35,10 @@ class PlannedAdapter implements EcosystemAdapter {
     const unsupported: UnsupportedForm[] = [];
     for (const probe of this.probes) {
       for (const file of await findFiles(repo, new Set(probe.files))) {
+        if (probe.sibling) {
+          const dir = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : "";
+          if ((await readFile(join(repo, dir + probe.sibling), "utf8").catch(() => undefined)) === undefined) continue;
+        }
         const text = await readFile(join(repo, file), "utf8").catch(() => "");
         if (probe.pattern.test(text)) {
           unsupported.push({
@@ -52,7 +58,7 @@ export const plannedAdapters: EcosystemAdapter[] = [
     "yarn",
     "`resolutions` in package.json",
     "Classic (v1) and modern (v2+) Yarn differ in selector syntax and lockfile format; behavior must branch on the pinned Yarn version.",
-    [{ files: ["package.json"], pattern: /"resolutions"\s*:/, mechanism: "Yarn `resolutions`" }],
+    [{ files: ["package.json"], pattern: /"resolutions"\s*:/, mechanism: "Yarn `resolutions`", sibling: "yarn.lock" }],
   ),
   new PlannedAdapter(
     "uv",

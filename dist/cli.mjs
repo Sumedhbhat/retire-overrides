@@ -9362,14 +9362,15 @@ var require_dist = __commonJS({
 });
 
 // src/cli.ts
-import { appendFile, readFile as readFile7, writeFile as writeFile5 } from "node:fs/promises";
+import { appendFile, readFile as readFile8, writeFile as writeFile6 } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-// src/adapters/npm/npm.ts
-import { mkdtemp, readFile as readFile2, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join as join2, posix as posix2 } from "node:path";
+// src/adapters/bun/bun.ts
+var import_semver3 = __toESM(require_semver2(), 1);
+import { mkdtemp as mkdtemp2, readFile as readFile3, rm as rm2, writeFile as writeFile2 } from "node:fs/promises";
+import { tmpdir as tmpdir2 } from "node:os";
+import { join as join3, posix as posix3 } from "node:path";
 
 // src/exec.ts
 import { spawn } from "node:child_process";
@@ -9631,6 +9632,9 @@ function escapeRegExp(text) {
 }
 
 // src/adapters/npm/npm.ts
+import { mkdtemp, readFile as readFile2, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join as join2, posix as posix2 } from "node:path";
 var UnsupportedLockfileError = class extends Error {
 };
 var NpmAdapter = class {
@@ -9764,7 +9768,8 @@ var NpmAdapter = class {
         name,
         version: typeof entry.version === "string" ? entry.version : "0.0.0",
         declared,
-        children: /* @__PURE__ */ new Map()
+        children: /* @__PURE__ */ new Map(),
+        peers: peerOnly(entry)
       };
       if (isImporter) {
         node.importer = location;
@@ -9799,13 +9804,16 @@ var NpmAdapter = class {
     deleteKeyPath(doc.data, entry.keyPath);
     await writeJsonDocument(path, doc);
   }
+  overrideCapabilities() {
+    return { parentScope: true, versionSelector: true };
+  }
   async writeOverride(project, dir, write) {
     const path = join2(dir, project.manifest);
     const doc = await readJsonDocument(path);
     if (write.replaces) {
       setKeyPath(doc.data, write.replaces.keyPath, write.value);
       await writeJsonDocument(path, doc);
-      return write.replaces.selector;
+      return { file: write.replaces.file, selector: write.replaces.selector };
     }
     if (!isRecord(doc.data.overrides)) doc.data.overrides = {};
     let node = doc.data.overrides;
@@ -9820,7 +9828,7 @@ var NpmAdapter = class {
     if (isRecord(node[key])) node[key]["."] = write.value;
     else node[key] = write.value;
     await writeJsonDocument(path, doc);
-    return this.selectorFor(write.target, write.scope);
+    return { file: project.manifest, selector: this.selectorFor(write.target, write.scope) };
   }
   async directSpec(project, dir, importer, name) {
     const data = (await readJsonDocument(join2(dir, importerManifest(project, importer)))).data;
@@ -9850,6 +9858,10 @@ var NpmAdapter = class {
 };
 function importerManifest(project, importer) {
   return projectPath(project.dir, importer === "" ? "package.json" : posix2.join(importer, "package.json"));
+}
+function peerOnly(entry) {
+  const other = /* @__PURE__ */ new Set([...Object.keys(asStrings(entry.dependencies)), ...Object.keys(asStrings(entry.optionalDependencies))]);
+  return new Set(Object.keys(asStrings(entry.peerDependencies)).filter((n) => !other.has(n)));
 }
 function asStrings(value) {
   if (!isRecord(value)) return {};
@@ -9906,9 +9918,342 @@ function setKeyPath(root, keyPath, value) {
   node[keyPath.at(-1)] = value;
 }
 
+// src/adapters/bun/bun.ts
+var FIELDS = ["overrides", "resolutions"];
+function bunHonorsScopedOverrides(version) {
+  const v = import_semver3.default.coerce(version);
+  return v !== null && import_semver3.default.gte(v, "1.4.0");
+}
+var BunAdapter = class {
+  id = "bun";
+  support = "implemented";
+  mechanisms = "`overrides` and `resolutions` in the root package.json: global keys on every Bun version; parent-scoped and version-selected keys on Bun 1.4+";
+  limitations = "Bun 1.3.x silently ignores parent-scoped and version-selected overrides, so they are reported as unsupported there and new overrides are global. A Bun nested override applies only to the direct parent. Requires the text lockfile bun.lock (bun.lockb is reported). `.` entries, `$name` references and Yarn-style resolution paths are reported, not evaluated.";
+  async detect(repo) {
+    const projects = [];
+    const unsupported = [];
+    for (const lockfile of await findFiles(repo, /* @__PURE__ */ new Set(["bun.lock", "bun.lockb"]))) {
+      const dir = posix3.dirname(lockfile) === "." ? "" : posix3.dirname(lockfile);
+      if (lockfile.endsWith(".lockb")) {
+        unsupported.push({
+          ecosystem: "bun",
+          file: lockfile,
+          message: "binary bun.lockb is not readable; migrate with `bun install --save-text-lockfile`"
+        });
+        continue;
+      }
+      const manifest = projectPath(dir, "package.json");
+      let data;
+      try {
+        data = (await readJsonDocument(join3(repo, manifest))).data;
+      } catch {
+        unsupported.push({ ecosystem: "bun", file: lockfile, message: "lockfile has no readable package.json beside it" });
+        continue;
+      }
+      const installed = await cliVersion("bun", join3(repo, dir)) ?? "0.0.0";
+      const pinned = pinnedVersion(data, "bun");
+      projects.push({
+        ecosystem: "bun",
+        dir,
+        manifest,
+        lockfile,
+        packageManager: { name: "bun", installed, ...pinned ? { pinned } : {} }
+      });
+    }
+    return { projects, unsupported };
+  }
+  preflight(project) {
+    if (project.packageManager.installed === "0.0.0") return ["bun is not installed"];
+    const mismatch = packageManagerMismatch("bun", project.packageManager.installed, project.packageManager.pinned);
+    if (mismatch.length > 0) return mismatch;
+    const pinned = project.packageManager.pinned;
+    if (pinned && bunHonorsScopedOverrides(pinned) !== bunHonorsScopedOverrides(project.packageManager.installed)) {
+      return [`bun@${pinned} is pinned but bun@${project.packageManager.installed} is installed, and they treat scoped overrides differently`];
+    }
+    return [];
+  }
+  version(project) {
+    return project.packageManager.pinned ?? project.packageManager.installed;
+  }
+  overrideCapabilities(project) {
+    const scoped = bunHonorsScopedOverrides(this.version(project));
+    return { parentScope: scoped, versionSelector: scoped };
+  }
+  async readOverrides(project, dir) {
+    const entries = [];
+    const unsupported = [];
+    const root = (await readJsonDocument(join3(dir, project.manifest))).data;
+    const scoped = bunHonorsScopedOverrides(this.version(project));
+    const file = project.manifest;
+    const report = (selector, message) => unsupported.push({ ecosystem: "bun", file, selector, message });
+    for (const field of FIELDS) {
+      const block = root[field];
+      if (block === void 0) continue;
+      if (!isRecord(block)) {
+        report(field, `${field} is not an object`);
+        continue;
+      }
+      for (const [key, value] of Object.entries(block)) {
+        if (key.includes("/") && !key.startsWith("@")) {
+          report(key, "Yarn-style resolution paths are not supported by Bun");
+          continue;
+        }
+        const target = parseSelector(key);
+        if (typeof value === "string") {
+          if (target.range && !scoped) {
+            report(key, `bun ${this.version(project)} ignores version-selected override keys (supported from Bun 1.4.0)`);
+            continue;
+          }
+          this.collect(entries, report, file, [field, key], target, [], value);
+        } else if (isRecord(value)) {
+          if (!scoped) {
+            report(key, `bun ${this.version(project)} ignores parent-scoped overrides (supported from Bun 1.4.0)`);
+            continue;
+          }
+          for (const [childKey, childValue] of Object.entries(value)) {
+            if (childKey === ".") {
+              report(`${key} > .`, "`.` self-override entries are not evaluated for Bun");
+            } else if (typeof childValue !== "string") {
+              report(`${key} > ${childKey}`, "Bun honors only one level of parent scoping");
+            } else {
+              this.collect(entries, report, file, [field, key, childKey], parseSelector(childKey), [target], childValue);
+            }
+          }
+        } else {
+          report(key, "override value is neither a string nor an object");
+        }
+      }
+    }
+    return { entries, unsupported };
+  }
+  collect(entries, report, file, keyPath, target, scope, value) {
+    const selector = this.selectorFor(target, scope);
+    if (value.startsWith("$")) {
+      report(selector, `reference ${value} is not evaluated for Bun`);
+      return;
+    }
+    if (value.startsWith("npm:") || parseSpec(target.name, value) === null) {
+      report(selector, `override value "${value}" is not a registry version range (aliases, git, file and URL values are not evaluated)`);
+      return;
+    }
+    entries.push({ ecosystem: "bun", file, project: "", selector, keyPath, target, scope, value });
+  }
+  selectorFor(target, scope) {
+    return [...scope, target].map(formatSelector).join(" > ");
+  }
+  overrideApplies(entry, path) {
+    const last = path.steps.at(-1);
+    if (!last || !selectorMatches(entry.target, last.name, last.version)) return false;
+    if (entry.scope.length === 0) return true;
+    const parent = path.steps.at(-2);
+    return parent !== void 0 && selectorMatches(entry.scope[0], parent.name, parent.version);
+  }
+  async readGraph(project, dir) {
+    const lock = parseBunLock(await readFile3(join3(dir, project.lockfile), "utf8"));
+    const version = Number(lock.lockfileVersion);
+    if (![1, 2, 3].includes(version) || !isRecord(lock.packages) || !isRecord(lock.workspaces)) {
+      throw new UnsupportedLockfileError(
+        `${project.lockfile} has lockfileVersion ${String(lock.lockfileVersion)}; only bun.lock versions 1 to 3 are supported`
+      );
+    }
+    const packages = lock.packages;
+    const nodes = /* @__PURE__ */ new Map();
+    const importers = [];
+    const importerByName = /* @__PURE__ */ new Map();
+    for (const [path, raw] of Object.entries(lock.workspaces)) {
+      if (!isRecord(raw)) continue;
+      const key = `importer:${path}`;
+      const declared = {
+        ...asStrings(raw.peerDependencies),
+        ...asStrings(raw.optionalDependencies),
+        ...asStrings(raw.devDependencies),
+        ...asStrings(raw.dependencies)
+      };
+      nodes.set(key, { key, name: typeof raw.name === "string" ? raw.name : path, version: "0.0.0", declared, children: /* @__PURE__ */ new Map(), importer: path });
+      importers.push(key);
+      if (path !== "" && typeof raw.name === "string") importerByName.set(raw.name, path);
+    }
+    for (const [key, raw] of Object.entries(packages)) {
+      if (!Array.isArray(raw) || typeof raw[0] !== "string") continue;
+      const ident = raw[0];
+      const at = ident.indexOf("@", ident.startsWith("@") ? 1 : 0);
+      const name = at === -1 ? ident : ident.slice(0, at);
+      const version2 = at === -1 ? "0.0.0" : ident.slice(at + 1);
+      if (version2.startsWith("workspace:")) continue;
+      const meta = raw.find((x) => isRecord(x));
+      const declared = meta ? { ...asStrings(meta.peerDependencies), ...asStrings(meta.optionalDependencies), ...asStrings(meta.dependencies) } : {};
+      nodes.set(key, { key, name, version: version2, declared, children: /* @__PURE__ */ new Map(), peers: meta ? peerOnly(meta) : /* @__PURE__ */ new Set() });
+    }
+    const resolveFrom = (start, dep) => {
+      for (let i = start.length; i >= 0; i--) {
+        const candidate = [...start.slice(0, i), dep].join("/");
+        const raw = packages[candidate];
+        if (raw === void 0) continue;
+        const ident = Array.isArray(raw) && typeof raw[0] === "string" ? raw[0] : "";
+        const ws = /@workspace:(.*)$/.exec(ident);
+        if (ws) return `importer:${ws[1]}`;
+        return candidate;
+      }
+      return void 0;
+    };
+    for (const node of nodes.values()) {
+      const start = node.importer !== void 0 ? node.importer === "" ? [] : [nameForImporter(importerByName, node.importer) ?? node.name] : splitKey(node.key);
+      for (const dep of Object.keys(node.declared ?? {})) {
+        const target = resolveFrom(start, dep);
+        if (target !== void 0 && nodes.has(target)) node.children.set(dep, target);
+      }
+    }
+    return { nodes, importers };
+  }
+  /** Why locked versions may be kept during a removal, when this Bun cannot refresh selectively. */
+  refreshLimitation(project) {
+    if (bunHonorsScopedOverrides(this.version(project))) return void 0;
+    return `bun ${this.version(project)} cannot refresh single packages, so locked versions inside declared ranges were kept; safety rests on the parent-constraint and per-copy checks`;
+  }
+  async resolve(project, dir, options) {
+    const cwd = join3(dir, project.dir);
+    const cache = options.registry ? await mkdtemp2(join3(tmpdir2(), "retire-overrides-bun-cache-")) : void 0;
+    const env = {};
+    if (options.registry) {
+      env.BUN_CONFIG_REGISTRY = options.registry;
+      env.BUN_INSTALL_CACHE_DIR = cache;
+    }
+    const flags = ["--lockfile-only", "--ignore-scripts", "--no-progress", "--no-summary"];
+    const targeted = bunHonorsScopedOverrides(this.version(project));
+    try {
+      if (options.refresh.length > 0 && !targeted && options.fullRefreshAllowed) {
+        await dropLockedPackages(join3(dir, project.lockfile), new Set(options.refresh));
+      }
+      await run("bun", ["install", ...flags], { cwd, env });
+      if (options.refresh.length > 0 && targeted) {
+        const manifests = await findFiles(cwd, /* @__PURE__ */ new Set(["package.json"]));
+        const saved = await Promise.all(manifests.map(async (m) => [m, await readFile3(join3(cwd, m), "utf8")]));
+        await run("bun", ["update", ...flags, ...options.refresh], { cwd, env });
+        for (const [m, text] of saved) await writeFile2(join3(cwd, m), text);
+        await run("bun", ["install", ...flags], { cwd, env });
+      }
+    } finally {
+      if (cache) await rm2(cache, { recursive: true, force: true });
+    }
+  }
+  async removeOverride(_project, dir, entry) {
+    const path = join3(dir, entry.file);
+    const doc = await readJsonDocument(path);
+    deleteKeyPath(doc.data, entry.keyPath);
+    await writeJsonDocument(path, doc);
+  }
+  async writeOverride(project, dir, write) {
+    const path = join3(dir, project.manifest);
+    const doc = await readJsonDocument(path);
+    if (write.replaces) {
+      setKeyPath(doc.data, write.replaces.keyPath, write.value);
+      await writeJsonDocument(path, doc);
+      return { file: write.replaces.file, selector: write.replaces.selector };
+    }
+    const field = !isRecord(doc.data.overrides) && isRecord(doc.data.resolutions) ? "resolutions" : "overrides";
+    if (!isRecord(doc.data[field])) doc.data[field] = {};
+    let node = doc.data[field];
+    const parent = write.scope.at(-1);
+    if (parent) {
+      const key = formatSelector(parent);
+      if (!isRecord(node[key])) node[key] = {};
+      node = node[key];
+    }
+    node[formatSelector(write.target)] = write.value;
+    await writeJsonDocument(path, doc);
+    return { file: project.manifest, selector: this.selectorFor(write.target, parent ? [parent] : []) };
+  }
+  async directSpec(project, dir, importer, name) {
+    const data = (await readJsonDocument(join3(dir, importerManifest2(project, importer)))).data;
+    for (const field of ["dependencies", "optionalDependencies", "devDependencies"]) {
+      const deps = data[field];
+      if (isRecord(deps) && typeof deps[name] === "string") return deps[name];
+    }
+    return void 0;
+  }
+  async setDependencySpec(project, dir, importer, name, spec) {
+    const path = join3(dir, importerManifest2(project, importer));
+    const doc = await readJsonDocument(path);
+    for (const field of ["dependencies", "optionalDependencies", "devDependencies"]) {
+      const deps = doc.data[field];
+      if (isRecord(deps) && typeof deps[name] === "string") {
+        deps[name] = spec;
+        await writeJsonDocument(path, doc);
+        return;
+      }
+    }
+    throw new Error(`${name} is not a direct dependency of ${importer || "the root project"}`);
+  }
+  async locate(_project, dir, entry) {
+    return locateKeyPath(await readFile3(join3(dir, entry.file), "utf8"), entry.keyPath);
+  }
+};
+function importerManifest2(project, importer) {
+  return projectPath(project.dir, importer === "" ? "package.json" : posix3.join(importer, "package.json"));
+}
+function nameForImporter(byName, path) {
+  for (const [name, p] of byName) if (p === path) return name;
+  return void 0;
+}
+function splitKey(key) {
+  const parts = key.split("/");
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i].startsWith("@") && i + 1 < parts.length) {
+      out.push(`${parts[i]}/${parts[i + 1]}`);
+      i++;
+    } else {
+      out.push(parts[i]);
+    }
+  }
+  return out;
+}
+function parseBunLock(text) {
+  let out = "";
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      out += ch;
+      if (ch === "\\") {
+        out += text[++i] ?? "";
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === ",") {
+      let j = i + 1;
+      while (j < text.length && /\s/.test(text[j])) j++;
+      if (text[j] === "}" || text[j] === "]") continue;
+    }
+    out += ch;
+  }
+  const parsed = JSON.parse(out);
+  return isRecord(parsed) ? parsed : {};
+}
+async function dropLockedPackages(lockfile, names) {
+  const lock = parseBunLock(await readFile3(lockfile, "utf8"));
+  const packages = lock.packages;
+  if (!isRecord(packages)) return;
+  for (const [key, raw] of Object.entries(packages)) {
+    const ident = Array.isArray(raw) && typeof raw[0] === "string" ? raw[0] : "";
+    const at = ident.indexOf("@", ident.startsWith("@") ? 1 : 0);
+    const real = at === -1 ? ident : ident.slice(0, at);
+    if (names.has(splitKey(key).at(-1)) || names.has(real)) delete packages[key];
+  }
+  await writeFile2(lockfile, `${JSON.stringify(lock, null, 2)}
+`);
+}
+
 // src/adapters/planned.ts
-import { readFile as readFile3 } from "node:fs/promises";
-import { join as join3 } from "node:path";
+import { readFile as readFile4 } from "node:fs/promises";
+import { join as join4 } from "node:path";
 var PlannedAdapter = class {
   support = "planned";
   id;
@@ -9925,7 +10270,11 @@ var PlannedAdapter = class {
     const unsupported = [];
     for (const probe of this.probes) {
       for (const file of await findFiles(repo, new Set(probe.files))) {
-        const text = await readFile3(join3(repo, file), "utf8").catch(() => "");
+        if (probe.sibling) {
+          const dir = file.includes("/") ? file.slice(0, file.lastIndexOf("/") + 1) : "";
+          if (await readFile4(join4(repo, dir + probe.sibling), "utf8").catch(() => void 0) === void 0) continue;
+        }
+        const text = await readFile4(join4(repo, file), "utf8").catch(() => "");
         if (probe.pattern.test(text)) {
           unsupported.push({
             ecosystem: this.id,
@@ -9943,7 +10292,7 @@ var plannedAdapters = [
     "yarn",
     "`resolutions` in package.json",
     "Classic (v1) and modern (v2+) Yarn differ in selector syntax and lockfile format; behavior must branch on the pinned Yarn version.",
-    [{ files: ["package.json"], pattern: /"resolutions"\s*:/, mechanism: "Yarn `resolutions`" }]
+    [{ files: ["package.json"], pattern: /"resolutions"\s*:/, mechanism: "Yarn `resolutions`", sibling: "yarn.lock" }]
   ),
   new PlannedAdapter(
     "uv",
@@ -9999,13 +10348,13 @@ var plannedAdapters = [
 ];
 
 // src/adapters/pnpm/pnpm.ts
-var import_semver3 = __toESM(require_semver2(), 1);
+var import_semver4 = __toESM(require_semver2(), 1);
 var import_yaml = __toESM(require_dist(), 1);
-import { access, mkdtemp as mkdtemp2, readFile as readFile4, rm as rm2, unlink, writeFile as writeFile2 } from "node:fs/promises";
-import { tmpdir as tmpdir2 } from "node:os";
-import { join as join4, posix as posix3 } from "node:path";
+import { access, mkdtemp as mkdtemp3, readFile as readFile5, rm as rm3, unlink, writeFile as writeFile3 } from "node:fs/promises";
+import { tmpdir as tmpdir3 } from "node:os";
+import { join as join5, posix as posix4 } from "node:path";
 function honoredLocations(pnpmVersion) {
-  const major = import_semver3.default.coerce(pnpmVersion)?.major ?? 0;
+  const major = import_semver4.default.coerce(pnpmVersion)?.major ?? 0;
   if (major >= 11) return ["pnpm-workspace.yaml"];
   if (major === 10) return ["pnpm-workspace.yaml", "package.json"];
   return ["package.json"];
@@ -10028,16 +10377,16 @@ var PnpmAdapter = class {
     const projects = [];
     const unsupported = [];
     for (const lockfile of await findFiles(repo, /* @__PURE__ */ new Set(["pnpm-lock.yaml"]))) {
-      const dir = posix3.dirname(lockfile) === "." ? "" : posix3.dirname(lockfile);
+      const dir = posix4.dirname(lockfile) === "." ? "" : posix4.dirname(lockfile);
       const manifest = projectPath(dir, "package.json");
       let data;
       try {
-        data = (await readJsonDocument(join4(repo, manifest))).data;
+        data = (await readJsonDocument(join5(repo, manifest))).data;
       } catch {
         unsupported.push({ ecosystem: "pnpm", file: lockfile, message: "lockfile has no readable package.json beside it" });
         continue;
       }
-      const installed = await cliVersion("pnpm", join4(repo, dir)) ?? "0.0.0";
+      const installed = await cliVersion("pnpm", join5(repo, dir)) ?? "0.0.0";
       const pinned = pinnedVersion(data, "pnpm");
       projects.push({
         ecosystem: "pnpm",
@@ -10046,7 +10395,7 @@ var PnpmAdapter = class {
         lockfile,
         packageManager: { name: "pnpm", installed, ...pinned ? { pinned } : {} }
       });
-      if (await exists(join4(repo, projectPath(dir, ".pnpmfile.cjs")))) {
+      if (await exists(join5(repo, projectPath(dir, ".pnpmfile.cjs")))) {
         unsupported.push({
           ecosystem: "pnpm",
           file: projectPath(dir, ".pnpmfile.cjs"),
@@ -10069,7 +10418,7 @@ var PnpmAdapter = class {
     const honored = honoredLocations(this.version(project));
     for (const location of ["pnpm-workspace.yaml", "package.json"]) {
       const file = projectPath(project.dir, location);
-      const overrides = await readOverridesAt(join4(dir, file), location);
+      const overrides = await readOverridesAt(join5(dir, file), location);
       if (overrides === void 0) continue;
       if (!honored.includes(location)) {
         unsupported.push({
@@ -10131,7 +10480,7 @@ var PnpmAdapter = class {
     return parent !== void 0 && selectorMatches(entry.scope[0], parent.name, parent.version);
   }
   async readGraph(project, dir) {
-    const lock = (0, import_yaml.parse)(await readFile4(join4(dir, project.lockfile), "utf8"));
+    const lock = (0, import_yaml.parse)(await readFile5(join5(dir, project.lockfile), "utf8"));
     if (!isRecord(lock) || String(lock.lockfileVersion) !== "9.0") {
       throw new UnsupportedLockfileError(
         `${project.lockfile} has lockfileVersion ${String(lock?.lockfileVersion)}; only lockfileVersion 9.0 (pnpm 9 and later) is supported`
@@ -10179,23 +10528,23 @@ var PnpmAdapter = class {
     return { nodes, importers };
   }
   async resolve(project, dir, options) {
-    const cwd = join4(dir, project.dir);
+    const cwd = join5(dir, project.dir);
     const common = ["--lockfile-only", "--ignore-scripts", "--config.confirm-modules-purge=false"];
-    const store = options.registry ? await mkdtemp2(join4(tmpdir2(), "retire-overrides-pnpm-")) : void 0;
+    const store = options.registry ? await mkdtemp3(join5(tmpdir3(), "retire-overrides-pnpm-")) : void 0;
     if (options.registry) common.push(`--config.registry=${options.registry}`, `--config.cache-dir=${store}/cache`, `--config.store-dir=${store}/store`);
     const env = { npm_config_registry: void 0, CI: "true" };
     try {
       await run("pnpm", ["install", "--no-frozen-lockfile", ...common], { cwd, env });
       if (options.refresh.length > 0) {
-        const recursive = await importerCount(join4(dir, project.lockfile)) > 1 ? ["--recursive"] : [];
+        const recursive = await importerCount(join5(dir, project.lockfile)) > 1 ? ["--recursive"] : [];
         await run("pnpm", ["update", ...recursive, "--depth", "Infinity", "--no-save", ...common, ...options.refresh], { cwd, env });
       }
     } finally {
-      if (store) await rm2(store, { recursive: true, force: true });
+      if (store) await rm3(store, { recursive: true, force: true });
     }
   }
   async removeOverride(project, dir, entry) {
-    const path = join4(dir, entry.file);
+    const path = join5(dir, entry.file);
     if (entry.file.endsWith("package.json")) {
       const doc2 = await readJsonDocument(path);
       const pnpm = doc2.data.pnpm;
@@ -10207,18 +10556,21 @@ var PnpmAdapter = class {
       await writeJsonDocument(path, doc2);
       return;
     }
-    const doc = (0, import_yaml.parseDocument)(await readFile4(path, "utf8"));
+    const doc = (0, import_yaml.parseDocument)(await readFile5(path, "utf8"));
     doc.deleteIn(["overrides", entry.keyPath.at(-1)]);
     const overrides = doc.get("overrides");
     if (overrides && Array.isArray(overrides.items) && overrides.items.length === 0) doc.delete("overrides");
     const text = String(doc);
     if (text.trim() === "" || text.trim() === "{}") await unlink(path);
-    else await writeFile2(path, text);
+    else await writeFile3(path, text);
+  }
+  overrideCapabilities() {
+    return { parentScope: true, versionSelector: true };
   }
   async writeOverride(project, dir, write) {
     const key = write.replaces?.keyPath.at(-1) ?? this.selectorFor(write.target, write.scope);
     const file = write.replaces?.file ?? await this.writeLocation(project, dir);
-    const path = join4(dir, file);
+    const path = join5(dir, file);
     if (file.endsWith("package.json")) {
       const doc = await readJsonDocument(path);
       if (!isRecord(doc.data.pnpm)) doc.data.pnpm = {};
@@ -10227,24 +10579,24 @@ var PnpmAdapter = class {
       pnpm.overrides[key] = write.value;
       await writeJsonDocument(path, doc);
     } else {
-      const text = await readFile4(path, "utf8").catch(() => "");
+      const text = await readFile5(path, "utf8").catch(() => "");
       const doc = (0, import_yaml.parseDocument)(text);
       doc.setIn(["overrides", key], write.value);
-      await writeFile2(path, String(doc));
+      await writeFile3(path, String(doc));
     }
-    return key;
+    return { file, selector: key };
   }
   /** Adds to whichever honored file already has overrides; otherwise the one this pnpm version prefers. */
   async writeLocation(project, dir) {
     const honored = honoredLocations(this.version(project));
     for (const location of honored) {
       const file = projectPath(project.dir, location);
-      if (await readOverridesAt(join4(dir, file), location) !== void 0) return file;
+      if (await readOverridesAt(join5(dir, file), location) !== void 0) return file;
     }
     return projectPath(project.dir, honored[0]);
   }
   async directSpec(project, dir, importer, name) {
-    const data = (await readJsonDocument(join4(dir, importerManifest2(project, importer)))).data;
+    const data = (await readJsonDocument(join5(dir, importerManifest3(project, importer)))).data;
     for (const field of ["dependencies", "optionalDependencies", "devDependencies"]) {
       const deps = data[field];
       if (isRecord(deps) && typeof deps[name] === "string") return deps[name];
@@ -10252,7 +10604,7 @@ var PnpmAdapter = class {
     return void 0;
   }
   async setDependencySpec(project, dir, importer, name, spec) {
-    const path = join4(dir, importerManifest2(project, importer));
+    const path = join5(dir, importerManifest3(project, importer));
     const doc = await readJsonDocument(path);
     for (const field of ["dependencies", "optionalDependencies", "devDependencies"]) {
       const deps = doc.data[field];
@@ -10265,17 +10617,17 @@ var PnpmAdapter = class {
     throw new Error(`${name} is not a direct dependency of ${importer || "the root project"}`);
   }
   async locate(_project, dir, entry) {
-    const text = await readFile4(join4(dir, entry.file), "utf8");
+    const text = await readFile5(join5(dir, entry.file), "utf8");
     return locateKeyPath(text, entry.keyPath);
   }
 };
-function importerManifest2(project, importer) {
-  return projectPath(project.dir, importer === "" || importer === "." ? "package.json" : posix3.join(importer, "package.json"));
+function importerManifest3(project, importer) {
+  return projectPath(project.dir, importer === "" || importer === "." ? "package.json" : posix4.join(importer, "package.json"));
 }
 async function readOverridesAt(path, location) {
   let text;
   try {
-    text = await readFile4(path, "utf8");
+    text = await readFile5(path, "utf8");
   } catch {
     return void 0;
   }
@@ -10287,7 +10639,7 @@ async function readOverridesAt(path, location) {
   return isRecord(data) && isRecord(data.overrides) ? data.overrides : void 0;
 }
 async function importerCount(lockfile) {
-  const lock = (0, import_yaml.parse)(await readFile4(lockfile, "utf8"));
+  const lock = (0, import_yaml.parse)(await readFile5(lockfile, "utf8"));
   return isRecord(lock) && isRecord(lock.importers) ? Object.keys(lock.importers).length : 1;
 }
 async function exists(path) {
@@ -10306,7 +10658,7 @@ function splitSnapshotKey(key) {
 }
 function refToKey(name, ref, importerId) {
   if (ref.startsWith("link:")) {
-    const target = posix3.normalize(posix3.join(importerId === "." ? "" : importerId, ref.slice(5))) || ".";
+    const target = posix4.normalize(posix4.join(importerId === "." ? "" : importerId, ref.slice(5))) || ".";
     return `importer:${target === "" ? "." : target}`;
   }
   if (/^(@[^/]+\/)?[^@(]+@/.test(ref) && !/^\d/.test(ref)) return ref;
@@ -10315,7 +10667,7 @@ function refToKey(name, ref, importerId) {
 
 // src/adapters/index.ts
 function allAdapters() {
-  return [new NpmAdapter(), new PnpmAdapter(), ...plannedAdapters];
+  return [new NpmAdapter(), new PnpmAdapter(), new BunAdapter(), ...plannedAdapters];
 }
 
 // src/advisories/providers.ts
@@ -10340,7 +10692,7 @@ var NpmBulkAdvisoryProvider = class {
     this.recorder = options.recorder;
   }
   supports(ecosystem) {
-    return ecosystem === "npm" || ecosystem === "pnpm" || ecosystem === "yarn";
+    return ecosystem === "npm" || ecosystem === "pnpm" || ecosystem === "bun" || ecosystem === "yarn";
   }
   async advisoriesFor(_ecosystem, versions) {
     const result = /* @__PURE__ */ new Map();
@@ -10418,7 +10770,7 @@ var GitHubAdvisoryProvider = class {
     this.recorder = options.recorder;
   }
   supports(ecosystem) {
-    return ecosystem === "npm" || ecosystem === "pnpm" || ecosystem === "yarn";
+    return ecosystem === "npm" || ecosystem === "pnpm" || ecosystem === "bun" || ecosystem === "yarn";
   }
   async advisoriesFor(_ecosystem, versions) {
     const result = /* @__PURE__ */ new Map();
@@ -10513,8 +10865,8 @@ function canonicalId(advisory) {
 
 // src/config.ts
 var import_yaml2 = __toESM(require_dist(), 1);
-import { readFile as readFile5 } from "node:fs/promises";
-import { join as join5 } from "node:path";
+import { readFile as readFile6 } from "node:fs/promises";
+import { join as join6 } from "node:path";
 var DEFAULT_CONFIG = {
   minimumReleaseAgeDays: 14,
   staleAfterDays: 90,
@@ -10534,7 +10886,7 @@ async function loadConfig(repo, explicit) {
   for (const candidate of candidates) {
     let text;
     try {
-      text = await readFile5(join5(repo, candidate), "utf8");
+      text = await readFile6(join6(repo, candidate), "utf8");
     } catch {
       if (explicit) throw new ConfigError(`config file ${explicit} not found`);
       continue;
@@ -10630,9 +10982,9 @@ function isImplemented(adapter) {
 }
 
 // src/git.ts
-import { mkdtemp as mkdtemp3, rm as rm3 } from "node:fs/promises";
-import { tmpdir as tmpdir3 } from "node:os";
-import { join as join6 } from "node:path";
+import { mkdtemp as mkdtemp4, rm as rm4 } from "node:fs/promises";
+import { tmpdir as tmpdir4 } from "node:os";
+import { join as join7 } from "node:path";
 var TRAILER = {
   id: "Retire-Overrides-Id",
   action: "Retire-Overrides-Action",
@@ -10650,14 +11002,14 @@ async function isDirty(repo) {
   return (await git(repo, ["status", "--porcelain", "--untracked-files=no"])).trim() !== "";
 }
 async function createScratch(repo, commit) {
-  const parent = await mkdtemp3(join6(tmpdir3(), "retire-overrides-"));
-  const dir = join6(parent, "wt");
+  const parent = await mkdtemp4(join7(tmpdir4(), "retire-overrides-"));
+  const dir = join7(parent, "wt");
   await git(repo, ["worktree", "add", "--quiet", "--detach", dir, commit]);
   return {
     dir,
     async dispose() {
       await git(repo, ["worktree", "remove", "--force", dir], { allowFailure: true });
-      await rm3(parent, { recursive: true, force: true });
+      await rm4(parent, { recursive: true, force: true });
       await git(repo, ["worktree", "prune"], { allowFailure: true });
     }
   };
@@ -10927,6 +11279,13 @@ var EngineContext = class {
     const meta = await this.package(node.name);
     return declaredRangeIn(meta.versions[node.version], dep);
   }
+  /** Whether `dep` is only a peer of the node (peers don't choose versions; another edge or auto-install does). */
+  async isPeerEdge(node, dep) {
+    if (node.importer !== void 0) return false;
+    if (node.peers !== void 0) return node.peers.has(dep);
+    const meta = (await this.package(node.name)).versions[node.version];
+    return meta !== void 0 && dep in meta.peerDependencies && !(dep in meta.dependencies) && !(dep in meta.optionalDependencies);
+  }
   seen(graph) {
     this.options.onGraph?.(graph);
   }
@@ -10948,7 +11307,7 @@ function errorMessage(error) {
 }
 
 // src/engine/fixes.ts
-var import_semver4 = __toESM(require_semver2(), 1);
+var import_semver5 = __toESM(require_semver2(), 1);
 
 // src/engine/identity.ts
 import { createHash } from "node:crypto";
@@ -11360,8 +11719,13 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
         block("constraint-unparseable", `${parentLabel} declares ${edge.as}@"${declared}", which is not a registry range`);
         continue;
       }
-      const permits = permittedVulnerableVersions(spec.range, targetMeta, advisories);
-      constraints.push({ parent: parentLabel, dependency: edge.as, range: declared, permitsVulnerable: permits });
+      const peer = await ctx.isPeerEdge(edge.parent, edge.as).catch(() => false);
+      let permits = permittedVulnerableVersions(spec.range, targetMeta, advisories);
+      if (peer) {
+        const pick = maxSatisfying(targetMeta, spec.range, ctx.now);
+        permits = pick !== null && permits.includes(pick) ? [pick] : [];
+      }
+      constraints.push({ parent: parentLabel, dependency: edge.as, range: declared, permitsVulnerable: permits, ...peer ? { peer: true } : {} });
       if (permits.length > 0) {
         need(
           "parent-permits-vulnerable",
@@ -11389,6 +11753,7 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
   const changed = [];
   const blockers = [];
   const added = addedVersions(before, after);
+  const young = [];
   for (const { name, version } of added) {
     const evidence = { name, version };
     try {
@@ -11401,10 +11766,7 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
         evidence.ageDays = Math.floor(ageInDays(published, ctx.now) * 10) / 10;
         if (ageInDays(published, ctx.now) < ctx.config.minimumReleaseAgeDays) {
           report.status = worst(report.status, "WAITING");
-          report.reasons.push({
-            code: "release-too-new",
-            message: `${name}@${version} was published ${evidence.ageDays} days ago; ordinary upgrades wait ${ctx.config.minimumReleaseAgeDays} days`
-          });
+          young.push(`${name}@${version} (${evidence.ageDays} days)`);
         }
       }
     } catch (error) {
@@ -11417,6 +11779,15 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
     }
   }
   report.evidence.changedVersions = changed;
+  if (young.length > 0) {
+    const shown = young.slice(0, 5).join(", ");
+    report.reasons.push({
+      code: "release-too-new",
+      message: `${young.length} newly resolved version${young.length === 1 ? " is" : "s are"} younger than ${ctx.config.minimumReleaseAgeDays} days: ${shown}${young.length > 5 ? ` and ${young.length - 5} more` : ""}`
+    });
+  }
+  const limitation = adapter.refreshLimitation?.(project);
+  if (limitation) report.evidence.refreshLimitation = limitation;
   if ((report.status === "REMOVABLE" || report.status === "WAITING") && intent.kind === "unknown") {
     report.technicalStatus = report.status;
     report.status = "REVIEW_NEEDED";
@@ -11578,7 +11949,7 @@ async function verify(input, candidate) {
   const outcome = await withScratch(ctx.options.repo, ctx.options.commit, async (dir) => {
     try {
       const refresh = await candidate.apply(dir);
-      await adapter.resolve(project, dir, { refresh, ...registryOption(ctx) });
+      await adapter.resolve(project, dir, { refresh, fullRefreshAllowed: true, ...registryOption(ctx) });
       const graph = await adapter.readGraph(project, dir);
       return { graph, ...await diffWorktree(dir) };
     } catch (error) {
@@ -11708,7 +12079,7 @@ async function fixEdge(ctx, ecosystem, graph, edge, wanted, depth) {
   }
   if (edge.parent.importer !== void 0) {
     const candidates = availableVersions(childMeta, ctx.now).filter(
-      (v) => import_semver4.default.prerelease(v) === null && !childMeta.versions[v]?.deprecated && import_semver4.default.gt(v, edge.child.version)
+      (v) => import_semver5.default.prerelease(v) === null && !childMeta.versions[v]?.deprecated && import_semver5.default.gt(v, edge.child.version)
     );
     const line = compatibleLine(edge.child.version);
     const ordered = [...candidates.filter((v) => compatibleLine(v) === line), ...candidates.filter((v) => compatibleLine(v) !== line)];
@@ -11763,16 +12134,27 @@ async function addOverride({ ctx, adapter, project }, graph, vulnerable, meta, a
       }
     }
   }
+  const caps = adapter.overrideCapabilities(project);
+  const needsParentVersion = [...parentScopes.values()].some((p) => p.scope.range !== void 0);
   let writes;
-  if (parentScopes.size <= ctx.config.maxScopedParents) {
+  if (caps.parentScope && parentScopes.size <= ctx.config.maxScopedParents && (caps.versionSelector || !needsParentVersion)) {
     writes = [...parentScopes.values()].map((p) => ({ target: { name: meta.name }, scope: [p.scope], value: p.value }));
   } else {
     const byLine = /* @__PURE__ */ new Map();
     for (const instance of vulnerable) byLine.set(compatibleLine(instance.version), choices.get(instance.nodeKey).version);
-    writes = [...byLine].map(([line, value]) => ({ target: { name: meta.name, range: line }, scope: [], value }));
+    if (caps.versionSelector) {
+      writes = [...byLine].map(([line, value]) => ({ target: { name: meta.name, range: line }, scope: [], value }));
+    } else if (byLine.size === 1) {
+      writes = [{ target: { name: meta.name }, scope: [], value: [...byLine.values()][0] }];
+    } else {
+      return {
+        code: "unsupported-scope",
+        message: `${project.packageManager.name} ${project.packageManager.pinned ?? project.packageManager.installed} only honors global overrides, but vulnerable copies of ${meta.name} are on several release lines (${[...byLine.keys()].join(", ")}); one global pin cannot fix them all`
+      };
+    }
   }
   const major = [...choices.values()].some((c) => c.major);
-  const selectors = writes.map((w) => selectorKey(project.ecosystem, overrideFile(adapter, project), adapter.selectorFor(w.target, w.scope)));
+  const selectors = [];
   return {
     kind: "add-override",
     summary: `override ${meta.name} to ${[...new Set(writes.map((w) => w.value))].join(", ")}`,
@@ -11780,22 +12162,19 @@ async function addOverride({ ctx, adapter, project }, graph, vulnerable, meta, a
       "No parent release fixes this inside existing ranges, so an override is the last resort.",
       ...writes.map((w) => `\`${adapter.selectorFor(w.target, w.scope)}\`: \`${w.value}\` (exact pin: outside every affected range, removed again once upstream catches up)`)
     ],
+    // Filled in by apply() with the files and selectors actually written, so trailers match the entries.
     selectors,
     intended: [meta.name],
     major,
     async apply(dir) {
-      const written = [];
-      for (const w of writes) written.push(await adapter.writeOverride(project, dir, w));
+      selectors.length = 0;
+      for (const w of writes) {
+        const written = await adapter.writeOverride(project, dir, w);
+        selectors.push(selectorKey(project.ecosystem, written.file, written.selector));
+      }
       return [meta.name];
     }
   };
-}
-function overrideFile(adapter, project) {
-  if (adapter.id === "pnpm") {
-    const major = import_semver4.default.coerce(project.packageManager.pinned ?? project.packageManager.installed)?.major ?? 0;
-    return major >= 10 ? project.dir ? `${project.dir}/pnpm-workspace.yaml` : "pnpm-workspace.yaml" : project.manifest;
-  }
-  return project.manifest;
 }
 function edgeLabel(edge) {
   const parent = edge.parent.importer !== void 0 ? edge.parent.importer || "(root)" : `${edge.parent.name}@${edge.parent.version}`;
@@ -11989,7 +12368,7 @@ function emptyBaseline() {
 }
 
 // src/metadata/server.ts
-var import_semver5 = __toESM(require_semver2(), 1);
+var import_semver6 = __toESM(require_semver2(), 1);
 import { createHash as createHash2 } from "node:crypto";
 import { createServer } from "node:http";
 import { gunzipSync, gzipSync as gzipSync2 } from "node:zlib";
@@ -12064,7 +12443,7 @@ function packument(name, pkg, now, baseUrl) {
     };
     if (pkg.time[v] !== void 0) time[v] = pkg.time[v];
   }
-  const stable = visible.filter((v) => import_semver5.default.valid(v) && import_semver5.default.prerelease(v) === null).sort(import_semver5.default.compare);
+  const stable = visible.filter((v) => import_semver6.default.valid(v) && import_semver6.default.prerelease(v) === null).sort(import_semver6.default.compare);
   const times = Object.values(time).sort();
   if (times.length > 0) {
     time.created = times[0];
@@ -12141,9 +12520,9 @@ function syntheticTarball(name, version) {
 }
 
 // src/metadata/snapshot.ts
-import { readFile as readFile6, writeFile as writeFile3 } from "node:fs/promises";
+import { readFile as readFile7, writeFile as writeFile4 } from "node:fs/promises";
 async function readSnapshot(path) {
-  const parsed = JSON.parse(await readFile6(path, "utf8"));
+  const parsed = JSON.parse(await readFile7(path, "utf8"));
   if (parsed.schemaVersion !== 1) {
     throw new Error(`${path}: unsupported metadata snapshot schemaVersion ${String(parsed.schemaVersion)}`);
   }
@@ -12193,14 +12572,14 @@ var Recorder = class {
     return { schemaVersion: 1, capturedAt: capturedAt.toISOString(), packages, advisories };
   }
   async save(path, capturedAt) {
-    await writeFile3(path, `${JSON.stringify(this.toSnapshot(capturedAt), null, 2)}
+    await writeFile4(path, `${JSON.stringify(this.toSnapshot(capturedAt), null, 2)}
 `);
   }
 };
 
 // src/publish/directory.ts
-import { mkdir, writeFile as writeFile4 } from "node:fs/promises";
-import { join as join7 } from "node:path";
+import { mkdir, writeFile as writeFile5 } from "node:fs/promises";
+import { join as join8 } from "node:path";
 var DirectoryPublisher = class {
   dir;
   constructor(dir) {
@@ -12211,25 +12590,25 @@ var DirectoryPublisher = class {
   }
   async publish(report) {
     const outcomes = [];
-    await mkdir(join7(this.dir, "changes"), { recursive: true });
-    await mkdir(join7(this.dir, "issues"), { recursive: true });
+    await mkdir(join8(this.dir, "changes"), { recursive: true });
+    await mkdir(join8(this.dir, "issues"), { recursive: true });
     for (const change of report.changes) {
       const name = `${change.kind}-${shortHash(change.identity)}`;
       const { patch, ...meta } = change;
-      await writeFile4(join7(this.dir, "changes", `${name}.patch`), patch);
-      await writeFile4(join7(this.dir, "changes", `${name}.json`), `${JSON.stringify(meta, null, 2)}
+      await writeFile5(join8(this.dir, "changes", `${name}.patch`), patch);
+      await writeFile5(join8(this.dir, "changes", `${name}.json`), `${JSON.stringify(meta, null, 2)}
 `);
-      outcomes.push({ identity: change.identity, kind: "pull-request", action: "created", message: join7(this.dir, "changes", `${name}.patch`) });
+      outcomes.push({ identity: change.identity, kind: "pull-request", action: "created", message: join8(this.dir, "changes", `${name}.patch`) });
     }
     for (const issue of report.issues) {
       const name = `stale-${shortHash(issue.identity)}`;
-      await writeFile4(join7(this.dir, "issues", `${name}.md`), `# ${issue.title}
+      await writeFile5(join8(this.dir, "issues", `${name}.md`), `# ${issue.title}
 
 ${issue.body}
 `);
-      await writeFile4(join7(this.dir, "issues", `${name}.json`), `${JSON.stringify(issue, null, 2)}
+      await writeFile5(join8(this.dir, "issues", `${name}.json`), `${JSON.stringify(issue, null, 2)}
 `);
-      outcomes.push({ identity: issue.identity, kind: "issue", action: "created", message: join7(this.dir, "issues", `${name}.md`) });
+      outcomes.push({ identity: issue.identity, kind: "issue", action: "created", message: join8(this.dir, "issues", `${name}.md`) });
     }
     return outcomes;
   }
@@ -12775,7 +13154,7 @@ ${" ".repeat(21)}${a.limitations}
   let report;
   if (values["from-report"]) {
     if (command !== "publish") throw new UsageError("--from-report only applies to publish");
-    report = JSON.parse(await readFile7(values["from-report"], "utf8"));
+    report = JSON.parse(await readFile8(values["from-report"], "utf8"));
   } else {
     report = await runEvaluation({ repo, now, config, configPath, values, publisher, log });
   }
@@ -12783,7 +13162,7 @@ ${" ".repeat(21)}${a.limitations}
     const json = `${JSON.stringify(report, null, 2)}
 `;
     if (values.json === "-") process.stdout.write(json);
-    else await writeFile5(values.json, json);
+    else await writeFile6(values.json, json);
   }
   if (values.markdown) await appendFile(values.markdown, renderMarkdown(report));
   if (values.json !== "-") {

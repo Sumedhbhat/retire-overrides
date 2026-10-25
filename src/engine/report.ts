@@ -33,6 +33,8 @@ export interface ConstraintEvidence {
   range: string;
   /** Published versions the range allows that an advisory affects. Empty means the constraint is safe. */
   permitsVulnerable: string[];
+  /** A peer range: judged by the version auto-install would pick, not by everything it allows. */
+  peer?: boolean;
 }
 
 export interface VersionEvidence {
@@ -64,6 +66,8 @@ export interface OverrideReport {
     introducedVulnerabilities?: string[];
     changedVersions?: VersionEvidence[];
     lockfileStale?: boolean;
+    /** Set when the package manager could not refresh the package selectively. */
+    refreshLimitation?: string;
     overrideAgeDays?: number;
     upstream?: string[];
   };

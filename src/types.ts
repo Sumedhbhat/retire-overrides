@@ -3,6 +3,7 @@
 export type EcosystemId =
   | "npm"
   | "pnpm"
+  | "bun"
   | "yarn"
   | "uv"
   | "cargo"
@@ -104,6 +105,8 @@ export interface GraphNode {
   declared?: Record<string, string>;
   /** Resolved children by dependency name → node key. */
   children: Map<string, string>;
+  /** Dependencies declared only as peers, when the lockfile records it. */
+  peers?: Set<string>;
   /** Set for project roots (npm `""`, workspace packages, pnpm importers). */
   importer?: string;
 }

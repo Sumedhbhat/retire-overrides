@@ -102,6 +102,14 @@ export class EngineContext {
     return declaredRangeIn(meta.versions[node.version], dep);
   }
 
+  /** Whether `dep` is only a peer of the node (peers don't choose versions; another edge or auto-install does). */
+  async isPeerEdge(node: GraphNode, dep: string): Promise<boolean> {
+    if (node.importer !== undefined) return false;
+    if (node.peers !== undefined) return node.peers.has(dep);
+    const meta = (await this.package(node.name)).versions[node.version];
+    return meta !== undefined && dep in meta.peerDependencies && !(dep in meta.dependencies) && !(dep in meta.optionalDependencies);
+  }
+
   seen(graph: ResolvedGraph): void {
     this.options.onGraph?.(graph);
   }
