@@ -1,4 +1,4 @@
-# Runs the reusable workflow on this repository's own pull requests, in read-only validation mode.
+# Runs retire-overrides on this repository's own pull requests, both ways users install it.
 name: Dogfood
 
 on:
@@ -8,5 +8,23 @@ permissions:
   contents: read
 
 jobs:
+  # The action as a single step, doing its own checkout (auto mode → read-only on PRs).
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: tool
+          persist-credentials: false
+      - uses: ./tool
+        id: ro
+        with:
+          working-directory: repo
+      - name: Ran read-only
+        env:
+          MODE: ${{ steps.ro.outputs.mode }}
+        run: test "$MODE" = check
+
+  # The reusable workflow.
   retire-overrides:
     uses: ./.github/workflows/retire-overrides.yml

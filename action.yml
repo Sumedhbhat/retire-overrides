@@ -5,41 +5,58 @@ branding:
   icon: shield
   color: purple
 
+# One step does everything: check out the repository with full history, set up Node (and Bun if
+# asked), then evaluate. In `auto` mode, pull requests get a read-only check and the default branch
+# publishes PRs and issues when a token is given. The token is never handed to read-only runs.
 inputs:
-  command:
-    description: "`check` (dry run, read-only) or `publish` (open/update PRs and issues on GitHub)."
-    default: check
   token:
-    description: Token used by `publish` to push branches and open PRs/issues. Use a GitHub App or fine-grained token so generated PRs trigger CI. Not needed for `check`.
+    description: GitHub App or fine-grained token (Contents, Pull requests, Issues read/write) used to open PRs and issues on the default branch. Not used on pull requests. Without it, every run is read-only.
     default: ""
-  working-directory:
-    description: Repository checkout to evaluate. It must have full history (actions/checkout with fetch-depth 0).
-    default: .
-  config:
-    description: Config file path relative to the repository (default .github/retire-overrides.yml when present).
-    default: ""
+  mode:
+    description: "`auto` (pull requests and other branches check; the default branch publishes when a token is set), `check` (always read-only) or `publish`."
+    default: auto
   fail-on:
-    description: Comma-separated statuses that fail the step, e.g. BLOCKED,REVIEW_NEEDED,VULN_BLOCKED,UNSUPPORTED.
+    description: Statuses that fail a read-only check, comma-separated (BLOCKED, REVIEW_NEEDED, NEEDED, WAITING, REMOVABLE, VULN_BLOCKED, UNSUPPORTED). Empty never fails.
+    default: BLOCKED
+  config:
+    description: Config file relative to the repository (default .github/retire-overrides.yml when present).
     default: ""
+  bun-version:
+    description: Bun version for bun.lock projects. Match your CI, because Bun's override behavior changes at 1.4. Empty skips Bun.
+    default: ""
+  checkout:
+    description: Check out the repository with full history. Set to false if an earlier step already did (it needs fetch-depth 0).
+    default: "true"
+  working-directory:
+    description: Repository directory to evaluate.
+    default: .
+  setup-node:
+    description: Install Node.js 24 and enable Corepack, so a pinned pnpm/npm version is used. Set to false if the job already did.
+    default: "true"
   args:
     description: Extra CLI arguments, for example `--now 2026-03-01T00:00:00Z`.
     default: ""
-  setup-node:
-    description: Install Node.js 24 and enable Corepack (so the repository's pinned pnpm/npm version is used). Set to false if the job already did.
+  upload-report:
+    description: Upload the JSON report as a workflow artifact.
     default: "true"
-
-  bun-version:
-    description: Bun version to install for projects with bun.lock (match the version your CI uses). Empty skips installing Bun.
-    default: ""
 
 outputs:
   report:
     description: Path of the machine-readable JSON report.
     value: ${{ steps.run.outputs.report }}
+  mode:
+    description: The mode that actually ran (`check` or `publish`).
+    value: ${{ steps.mode.outputs.mode }}
 
 runs:
   using: composite
   steps:
+    - if: inputs.checkout == 'true'
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        path: ${{ inputs.working-directory }}
+        fetch-depth: 0
+        persist-credentials: false
     - if: inputs.setup-node == 'true'
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
@@ -51,34 +68,72 @@ runs:
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       with:
         bun-version: ${{ inputs.bun-version }}
+
+    - id: mode
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        EVENT: ${{ github.event_name }}
+        REF: ${{ github.ref }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        HAS_TOKEN: ${{ inputs.token != '' }}
+      run: |
+        set -euo pipefail
+        case "$MODE" in
+          check) mode=check ;;
+          publish)
+            if [[ "$EVENT" == pull_request* ]]; then
+              echo "::error::mode: publish is refused on pull_request events; untrusted PR code must not run with write credentials"
+              exit 2
+            fi
+            mode=publish ;;
+          auto)
+            # Scheduled runs always use the default branch, and their payload has no repository object.
+            if [[ "$EVENT" == pull_request* ]]; then
+              mode=check
+            elif [[ "$EVENT" == schedule || "$REF" == "refs/heads/$DEFAULT_BRANCH" ]] && [[ "$HAS_TOKEN" == true ]]; then
+              mode=publish
+            else
+              mode=check
+              [[ "$HAS_TOKEN" != true && "$EVENT" != pull_request* ]] && echo "::notice::No token given, so this run is read-only. Pass a GitHub App or fine-grained token to open PRs."
+            fi ;;
+          *) echo "::error::mode must be auto, check or publish"; exit 2 ;;
+        esac
+        echo "mode=$mode" >> "$GITHUB_OUTPUT"
+        echo "retire-overrides mode: $mode"
+
     - id: run
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
         RETIRE_OVERRIDES_REF: ${{ env.RETIRE_OVERRIDES_REF || github.action_ref }}
-        INPUT_COMMAND: ${{ inputs.command }}
+        MODE: ${{ steps.mode.outputs.mode }}
         INPUT_CONFIG: ${{ inputs.config }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
         INPUT_ARGS: ${{ inputs.args }}
-        INPUT_TOKEN: ${{ inputs.token }}
+        # Only a publish run ever receives the token; read-only runs (including every PR) get nothing.
+        INPUT_TOKEN: ${{ steps.mode.outputs.mode == 'publish' && inputs.token || '' }}
       run: |
         set -euo pipefail
         report="$RUNNER_TEMP/retire-overrides-report.json"
         echo "report=$report" >> "$GITHUB_OUTPUT"
-        args=("$INPUT_COMMAND" --repo . --json "$report" --markdown "$GITHUB_STEP_SUMMARY")
+        args=("$MODE" --repo . --json "$report" --markdown "$GITHUB_STEP_SUMMARY")
         [[ -n "$INPUT_CONFIG" ]] && args+=(--config "$INPUT_CONFIG")
-        [[ -n "$INPUT_FAIL_ON" ]] && args+=(--fail-on "$INPUT_FAIL_ON")
-        if [[ "$INPUT_COMMAND" == publish ]]; then
-          if [[ -z "$INPUT_TOKEN" ]]; then
-            echo "::error::publish needs the token input (GitHub App or fine-grained token)"
-            exit 2
-          fi
+        if [[ "$MODE" == publish ]]; then
           args+=(--github)
           export GH_TOKEN="$INPUT_TOKEN"
         else
-          # A read-only check never needs, or sees, write credentials.
+          [[ -n "$INPUT_FAIL_ON" ]] && args+=(--fail-on "$INPUT_FAIL_ON")
           unset GH_TOKEN GITHUB_TOKEN
         fi
+        unset INPUT_TOKEN
         # shellcheck disable=SC2206
         extra=($INPUT_ARGS)
         node "$GITHUB_ACTION_PATH/dist/cli.mjs" "${args[@]}" "${extra[@]}"
+
+    - if: always() && inputs.upload-report == 'true' && steps.run.outputs.report != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: retire-overrides-report-${{ steps.mode.outputs.mode }}
+        path: ${{ steps.run.outputs.report }}
+        if-no-files-found: ignore
