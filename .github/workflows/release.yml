@@ -1,0 +1,105 @@
+# Release channels (see docs/releases.md):
+#   main         → prerelease v<version>-nightly.<run>, one per push
+#   release/X.Y  → stable vX.Y.Z when that version first lands on the branch
+# Pull requests build every artifact and publish nothing. Published tags and assets are never moved.
+name: Release
+
+on:
+  push:
+    branches: [main, "release/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      channel: ${{ steps.version.outputs.channel }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+          RUN: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          manifest=$(node -p 'require("./package.json").version')
+          if [[ "$EVENT" == push && "$REF_NAME" == release/* ]]; then
+            line=${REF_NAME#release/}
+            if [[ "$manifest" != "$line".* ]]; then
+              echo "::error::package.json version $manifest does not belong to $REF_NAME"
+              exit 1
+            fi
+            echo "version=$manifest" >> "$GITHUB_OUTPUT"
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          elif [[ "$EVENT" == push && "$REF_NAME" == main ]]; then
+            echo "version=$manifest-nightly.$RUN" >> "$GITHUB_OUTPUT"
+            echo "channel=nightly" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$manifest-pr.$RUN" >> "$GITHUB_OUTPUT"
+            echo "channel=none" >> "$GITHUB_OUTPUT"
+          fi
+      - run: npm ci --ignore-scripts
+      - name: Committed bundle matches the source
+        run: npm run check-dist
+      - name: Build release archive
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          RETIRE_OVERRIDES_VERSION="$VERSION" node scripts/build.mjs
+          stage="retire-overrides-$VERSION"
+          mkdir -p "out/$stage/dist"
+          cp dist/cli.mjs "out/$stage/dist/cli.mjs"
+          cp action.yml README.md LICENSE "out/$stage/"
+          cp -r docs "out/$stage/docs"
+          echo "$VERSION" > "out/$stage/VERSION"
+          tar -C out -czf "out/$stage.tar.gz" "$stage"
+          (cd out && sha256sum "$stage.tar.gz" > SHA256SUMS)
+          "out/$stage/dist/cli.mjs" --version
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: |
+            out/*.tar.gz
+            out/SHA256SUMS
+
+  publish:
+    needs: build
+    if: github.event_name == 'push' && needs.build.outputs.channel != 'none'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: out
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+          CHANNEL: ${{ needs.build.outputs.channel }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag already exists; published releases are never replaced. Bump the version to release a fix."
+            exit 0
+          fi
+          flags=()
+          [[ "$CHANNEL" == nightly ]] && flags+=(--prerelease)
+          gh release create "$tag" out/*.tar.gz out/SHA256SUMS \
+            --target "$GITHUB_SHA" --title "retire-overrides $VERSION" --generate-notes "${flags[@]}"

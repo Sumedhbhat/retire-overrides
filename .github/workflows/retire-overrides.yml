@@ -1,0 +1,123 @@
+# Reusable workflow. Call it from one small workflow in your repository; see README.md.
+#
+# - pull_request: read-only validation. No write credentials are used, so untrusted PR code never sees them.
+# - schedule, push to the default branch, workflow_dispatch: evaluate and publish PRs/issues with the
+#   caller's token or GitHub App.
+name: retire-overrides
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: Config file relative to the repository root.
+        type: string
+        default: ""
+      fail-on:
+        description: Statuses that fail read-only PR validation.
+        type: string
+        default: BLOCKED
+      dry-run:
+        description: Evaluate only, even on the default branch.
+        type: boolean
+        default: false
+      app-id:
+        description: GitHub App ID, when authenticating with an App instead of a token.
+        type: string
+        default: ""
+      args:
+        description: Extra CLI arguments.
+        type: string
+        default: ""
+    secrets:
+      token:
+        description: Fine-grained token with Contents, Pull requests and Issues read/write.
+        required: false
+      app-private-key:
+        description: Private key of the GitHub App named by app-id.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .retire-overrides-tool
+          persist-credentials: false
+      - uses: ./.retire-overrides-tool
+        env:
+          RETIRE_OVERRIDES_REF: ${{ job.workflow_ref }}
+        with:
+          command: check
+          working-directory: repo
+          config: ${{ inputs.config }}
+          fail-on: ${{ inputs.fail-on }}
+          args: ${{ inputs.args }}
+
+  maintain:
+    # Scheduled runs always use the default branch (and their payload has no repository object).
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name != 'pull_request' && github.event_name != 'pull_request_target' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: retire-overrides-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - id: app
+        if: inputs.app-id != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ inputs.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .retire-overrides-tool
+          persist-credentials: false
+      - name: Check credentials
+        if: ${{ !inputs.dry-run }}
+        env:
+          HAS_TOKEN: ${{ steps.app.outputs.token != '' || secrets.token != '' }}
+        run: |
+          if [[ "$HAS_TOKEN" != true ]]; then
+            echo "::error::Pass secrets.token (fine-grained token) or app-id + secrets.app-private-key. GITHUB_TOKEN cannot be used: PRs it opens do not trigger CI, so auto-merge would never fire."
+            exit 1
+          fi
+      - uses: ./.retire-overrides-tool
+        env:
+          RETIRE_OVERRIDES_REF: ${{ job.workflow_ref }}
+        with:
+          command: ${{ inputs.dry-run && 'check' || 'publish' }}
+          token: ${{ steps.app.outputs.token || secrets.token }}
+          working-directory: repo
+          config: ${{ inputs.config }}
+          args: ${{ inputs.args }}
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: retire-overrides-report
+          path: ${{ runner.temp }}/retire-overrides-report.json
+          if-no-files-found: ignore

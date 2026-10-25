@@ -1,0 +1,12 @@
+# Runs the reusable workflow on this repository's own pull requests, in read-only validation mode.
+name: Dogfood
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  retire-overrides:
+    uses: ./.github/workflows/retire-overrides.yml

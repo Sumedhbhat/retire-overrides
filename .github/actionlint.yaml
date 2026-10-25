@@ -1,0 +1,6 @@
+# actionlint 1.7.12 predates the job.workflow_* context properties GitHub added on 2026-04-23
+# (https://docs.github.com/en/actions/reference/workflows-and-actions/contexts). Remove once actionlint knows them.
+paths:
+  .github/workflows/retire-overrides.yml:
+    ignore:
+      - 'property "workflow_(repository|sha|ref)" is not defined in object type'

@@ -1,0 +1,28 @@
+# .github/retire-overrides.yml — optional. Every key has a default.
+version: 1
+
+# Ordinary upgrades, including incidental ones while removing an override, wait this long.
+# Security fixes never wait.
+minimumReleaseAgeDays: 14
+
+# An override still needed after this many days gets one tracking issue.
+staleAfterDays: 90
+
+# Intentional overrides. Never proposed for removal.
+keep:
+  - package: left-pad
+    reason: pinned for reproducible builds of the legacy bundle
+
+# Existing overrides that retire-overrides did not create, but may remove automatically once safe.
+# Without this, they are reported as REVIEW_NEEDED instead of removed.
+manage:
+  - package: tar-lite
+    ecosystem: npm
+
+# Advisory sources. `npm` (the registry's bulk advisory endpoint) needs no credentials;
+# `github` uses the GitHub Advisory Database with GH_TOKEN. Several sources are merged conservatively.
+advisoryProviders: [npm]
+
+autoMerge: true
+mergeMethod: squash
+labels: [dependencies, security]
