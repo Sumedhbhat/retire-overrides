@@ -1,4 +1,6 @@
-# Reusable workflow. Call it from one small workflow in your repository; see README.md.
+# Reusable workflow around the action, for the strongest isolation: pull-request runs happen in a
+# job that never receives the token at all. Most repositories can use the action directly instead
+# (`uses: Sumedhbhat/retire-overrides@vX.Y.Z`); see README.md.
 #
 # - pull_request: read-only validation. No write credentials are used, so untrusted PR code never sees them.
 # - schedule, push to the default branch, workflow_dispatch: evaluate and publish PRs/issues with the
@@ -65,7 +67,8 @@ jobs:
         env:
           RETIRE_OVERRIDES_REF: ${{ job.workflow_ref }}
         with:
-          command: check
+          mode: check
+          checkout: false
           working-directory: repo
           config: ${{ inputs.config }}
           fail-on: ${{ inputs.fail-on }}
@@ -115,15 +118,11 @@ jobs:
         env:
           RETIRE_OVERRIDES_REF: ${{ job.workflow_ref }}
         with:
-          command: ${{ inputs.dry-run && 'check' || 'publish' }}
+          mode: ${{ inputs.dry-run && 'check' || 'publish' }}
+          fail-on: ""
           token: ${{ steps.app.outputs.token || secrets.token }}
+          checkout: false
           working-directory: repo
           config: ${{ inputs.config }}
           args: ${{ inputs.args }}
           bun-version: ${{ inputs.bun-version }}
-      - if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: retire-overrides-report
-          path: ${{ runner.temp }}/retire-overrides-report.json
-          if-no-files-found: ignore

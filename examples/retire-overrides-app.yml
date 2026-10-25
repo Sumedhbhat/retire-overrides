@@ -6,9 +6,9 @@ on:
     - cron: "23 5 * * *"
   push:
     branches: [main]
-    paths: ["**/package.json", "**/package-lock.json", "**/pnpm-lock.yaml", "**/pnpm-workspace.yaml", ".github/retire-overrides.yml"]
+    paths: ["**/package.json", "**/package-lock.json", "**/pnpm-lock.yaml", "**/pnpm-workspace.yaml", "**/bun.lock", ".github/retire-overrides.yml"]
   pull_request:
-    paths: ["**/package.json", "**/package-lock.json", "**/pnpm-lock.yaml", "**/pnpm-workspace.yaml", ".github/retire-overrides.yml"]
+    paths: ["**/package.json", "**/package-lock.json", "**/pnpm-lock.yaml", "**/pnpm-workspace.yaml", "**/bun.lock", ".github/retire-overrides.yml"]
   workflow_dispatch:
 
 permissions:
@@ -16,8 +16,16 @@ permissions:
 
 jobs:
   retire-overrides:
-    uses: Sumedhbhat/retire-overrides/.github/workflows/retire-overrides.yml@v0.1.0
-    with:
-      app-id: ${{ vars.RETIRE_OVERRIDES_APP_ID }}
-    secrets:
-      app-private-key: ${{ secrets.RETIRE_OVERRIDES_APP_PRIVATE_KEY }}
+    runs-on: ubuntu-latest
+    concurrency: retire-overrides
+    steps:
+      # Mint an App token only for runs that may publish; pull requests stay credential-free.
+      - id: app
+        if: github.event_name != 'pull_request'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RETIRE_OVERRIDES_APP_ID }}
+          private-key: ${{ secrets.RETIRE_OVERRIDES_APP_PRIVATE_KEY }}
+      - uses: Sumedhbhat/retire-overrides@v0.3.0
+        with:
+          token: ${{ steps.app.outputs.token }}

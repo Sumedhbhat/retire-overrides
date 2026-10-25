@@ -7,8 +7,8 @@ There is no ledger to maintain, and no LLM runs at any point. Everything it deci
 It ships as three things that share one engine:
 
 - a **standalone CLI** that has nothing to do with GitHub (`retire-overrides check`)
-- a **GitHub Action** (`Sumedhbhat/retire-overrides@vX.Y.Z`)
-- a **reusable workflow** that runs daily, after lockfile changes, on demand, and as a read-only check on PRs
+- a **GitHub Action** (`Sumedhbhat/retire-overrides@vX.Y.Z`): one step that runs daily, after lockfile changes, on demand, and as a read-only check on PRs
+- a **reusable workflow** around the same action, for repositories that want PR jobs to never see the token
 
 ## Support
 
@@ -31,7 +31,7 @@ Planned adapters are not quiet about what they skip. If one finds its native mec
 
 You need one workflow file and one credential.
 
-**1. Add the caller workflow** as `.github/workflows/retire-overrides.yml` (from [examples/retire-overrides.yml](examples/retire-overrides.yml)):
+**1. Add the workflow** as `.github/workflows/retire-overrides.yml` (from [examples/retire-overrides.yml](examples/retire-overrides.yml)):
 
 ```yaml
 name: retire-overrides
@@ -40,20 +40,34 @@ on:
     - cron: "23 5 * * *"
   push:
     branches: [main]
-    paths: ["**/package.json", "**/package-lock.json", "**/pnpm-lock.yaml", "**/pnpm-workspace.yaml", ".github/retire-overrides.yml"]
+    paths: ["**/package.json", "**/package-lock.json", "**/pnpm-lock.yaml", "**/pnpm-workspace.yaml", "**/bun.lock", ".github/retire-overrides.yml"]
   pull_request:
-    paths: ["**/package.json", "**/package-lock.json", "**/pnpm-lock.yaml", "**/pnpm-workspace.yaml", ".github/retire-overrides.yml"]
+    paths: ["**/package.json", "**/package-lock.json", "**/pnpm-lock.yaml", "**/pnpm-workspace.yaml", "**/bun.lock", ".github/retire-overrides.yml"]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   retire-overrides:
-    uses: Sumedhbhat/retire-overrides/.github/workflows/retire-overrides.yml@v0.1.0
-    secrets:
-      token: ${{ secrets.RETIRE_OVERRIDES_TOKEN }}
+    runs-on: ubuntu-latest
+    concurrency: retire-overrides   # one run at a time
+    steps:
+      - uses: Sumedhbhat/retire-overrides@v0.3.0
+        with:
+          token: ${{ secrets.RETIRE_OVERRIDES_TOKEN }}
+          # bun-version: 1.3.0      # Bun projects: the version your CI uses
 ```
 
-Pin a release tag (`vX.Y.Z`) to stay exactly where you are, or the release branch (`release/X.Y`) to pick up patch releases. The reusable workflow checks out the tool at the same commit as the workflow file, so the workflow and the CLI always match.
+That single step checks out the repository with full history, sets up Node (and Bun when `bun-version` is set), and then:
+
+| Trigger | Mode | What happens |
+|---|---|---|
+| `pull_request` | `check` | Read-only evaluation, posted as a job summary. The token is never passed to it. Fails on `BLOCKED` by default (`fail-on` input). |
+| `schedule`, `push` or `workflow_dispatch` on the default branch, with a token | `publish` | Opens, updates or closes PRs and issues. |
+| anything else, or no token | `check` | Read-only. |
+
+The JSON report is uploaded as an artifact. Set `mode: check` to keep it read-only everywhere (shadow mode). [action.yml](action.yml) lists every input.
+
+Pin a release tag (`vX.Y.Z`) to stay exactly where you are, or the release branch (`release/X.Y`) to pick up patch releases.
 
 **2. Create the credential.** Use either of these:
 
@@ -69,16 +83,24 @@ Pin a release tag (`vX.Y.Z`) to stay exactly where you are, or the release branc
 
 Configuration is optional. To change a default, add `.github/retire-overrides.yml` ([example](examples/retire-overrides.config.yml)).
 
-### What runs when
+### Action or reusable workflow
 
-| Trigger | Job | Credentials | What happens |
-|---|---|---|---|
-| `pull_request` | `validate` | none (`contents: read`) | Read-only evaluation of the PR's commit, posted as a job summary. Fails on `BLOCKED` by default (`fail-on` input). |
-| `schedule`, `push` to the default branch, `workflow_dispatch` | `maintain` | your App/token | Evaluates the default branch tip and opens, updates or closes PRs and issues. Runs are serialized. |
+The action above is the short way. The repository also ships a reusable workflow built on the same action, for stricter isolation:
 
-For Bun projects, pass `with: { bun-version: <the version your CI uses> }`, because Bun's override behavior depends on the version.
+```yaml
+jobs:
+  retire-overrides:
+    uses: Sumedhbhat/retire-overrides/.github/workflows/retire-overrides.yml@v0.3.0
+    secrets:
+      token: ${{ secrets.RETIRE_OVERRIDES_TOKEN }}
+```
 
-Untrusted PR code never runs with write credentials. The `validate` job doesn't receive the token, and resolution never runs install scripts.
+GitHub requires that longer reference for any reusable workflow; there is no short form. What you get for it:
+
+- **The token never enters a pull-request job.** With the action, a PR from a branch of the same repository still receives the secret as a step input. The action doesn't use it in `check` mode and keeps it out of everything it runs, but it exists on the runner. The reusable workflow runs PRs in a separate job that isn't given the secret at all.
+- **Runs on the default branch are serialized** for you. With the action, add the `concurrency` line shown above.
+
+Untrusted PR code never runs with write credentials either way, and resolution never runs install scripts.
 
 ## What it does
 
