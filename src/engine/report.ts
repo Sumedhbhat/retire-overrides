@@ -9,6 +9,7 @@ import type {
   UnsupportedForm,
 } from "../types.ts";
 import type { PackageManagerInfo } from "../adapters/adapter.ts";
+import type { AlertRef, AlertsSummary, CoverageEntry } from "./alerts.ts";
 
 export const REPORT_SCHEMA_VERSION = 1;
 
@@ -96,6 +97,8 @@ export interface VulnerabilityReport {
   reasons: Reason[];
   change?: string;
   deferredTo?: string;
+  /** Open host alerts (Dependabot) this vulnerability corresponds to. */
+  alerts?: AlertRef[];
 }
 
 export type ChangeKind = "remove-override" | "add-override" | "update-override" | "parent-update" | "lockfile-refresh";
@@ -155,6 +158,10 @@ export interface Report {
   kept: OverrideReport[];
   vulnerabilities: VulnerabilityReport[];
   unsupported: UnsupportedForm[];
+  /** Host alert input (Dependabot), when a publisher supplied it. Absent for host-independent runs. */
+  alerts?: AlertsSummary;
+  /** Open alerts no vulnerability report accounts for, with the reason. Never silently dropped. */
+  coverage?: CoverageEntry[];
   changes: PlannedChange[];
   issues: PlannedIssue[];
   /** Group keys whose evaluation finished without blockers; publishers may close stale PRs/issues for these. */

@@ -7,6 +7,7 @@ import { declaredRangeIn } from "../registry/registry.ts";
 import type { Advisory, EcosystemId, GraphNode, PackageMetadata, ResolvedGraph } from "../types.ts";
 import { schemeFor } from "../schemes.ts";
 import { affectingAdvisories } from "../versions.ts";
+import type { AlertsInput } from "./alerts.ts";
 import type { AdvisoryRef } from "./report.ts";
 
 /** An open PR from Dependabot, Renovate or another bot that may already fix something. */
@@ -28,6 +29,8 @@ export interface EngineOptions {
   /** Registry URL handed to package managers (snapshot replay); undefined uses the repository's own configuration. */
   packageManagerRegistry?: string;
   externalChanges?: ExternalChange[];
+  /** Open host security alerts (Dependabot), when the publisher can read them. */
+  alerts?: AlertsInput;
   log?: (message: string) => void;
   /** Called with every graph read, so a recorder can capture metadata for replay. */
   onGraph?: (graph: ResolvedGraph) => void;

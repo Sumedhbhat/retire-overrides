@@ -1,3 +1,4 @@
+import type { AlertsInput } from "../engine/alerts.ts";
 import type { ExternalChange } from "../engine/context.ts";
 import type { Report } from "../engine/report.ts";
 
@@ -16,6 +17,12 @@ export interface PublishOutcome {
 export interface Publisher {
   /** Open PRs from Dependabot, Renovate and similar bots, so fixes can be deferred to them. */
   externalChanges(): Promise<ExternalChange[]>;
+  /**
+   * Open security alerts the host raised for the repository (Dependabot on GitHub), for
+   * cross-referencing and coverage. Hosts without alerts omit this. Lacking permission must come back
+   * as `unavailable`, never as an empty list.
+   */
+  openAlerts?(): Promise<AlertsInput>;
   /** Creates or updates PRs and issues idempotently. `repo` is the local clone the report came from. */
   publish(report: Report, repo: string): Promise<PublishOutcome[]>;
 }

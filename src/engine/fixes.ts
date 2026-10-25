@@ -17,6 +17,7 @@ import {
   maxSatisfying,
   parseSpec,
 } from "../versions.ts";
+import { alertRef, alertsFor } from "./alerts.ts";
 import { buildFixChange } from "./changes.ts";
 import { advisoryRefs, type EngineContext, errorMessage, type ExternalChange, type Finding, findingKey } from "./context.ts";
 import { fixGroupKey, fixIdentity, selectorKey } from "./identity.ts";
@@ -104,6 +105,10 @@ async function planGroup(
     return { report, conclusive: [] };
   }
   report.advisories = advisoryRefs(advisories.filter((a) => advisoryIds.includes(a.id)));
+  if (ctx.options.alerts?.status === "available") {
+    const matched = alertsFor(ctx.options.alerts.alerts, project.ecosystem, project.dir, group.name, advisoryIds);
+    if (matched.length > 0) report.alerts = matched.map(alertRef).sort((a, b) => a.number - b.number);
+  }
 
   const deferral = matchExternal(ctx.options.externalChanges ?? [], group.name);
   if (deferral) {

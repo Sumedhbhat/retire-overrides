@@ -206,6 +206,7 @@ export function buildFixChange(ctx: EngineContext, input: FixChangeInput): Plann
     advisoryList(v.advisories),
     "",
   ]);
+  const alerts = input.vulnerabilities.flatMap((v) => v.alerts ?? []).sort((a, b) => a.number - b.number);
   const attempts = input.vulnerabilities[0]!.attempts
     .map((a) => `- ${a.strategy}: ${a.outcome}${a.reasons.length > 0 ? ` — ${a.reasons.map((r) => r.message).join("; ")}` : ""}`)
     .join("\n");
@@ -214,6 +215,7 @@ export function buildFixChange(ctx: EngineContext, input: FixChangeInput): Plann
     "",
     ...input.details.map((d) => `- ${d}`),
     "",
+    ...(alerts.length > 0 ? [...alerts.map((a) => `Fixes Dependabot alert [#${a.number}](${a.url}) (${a.advisory}).`), ""] : []),
     "Every affected copy and dependency path was re-resolved without installing packages or running scripts. After this change no copy is in a known affected range and the audit gains no new findings. Repository CI must still pass.",
     "",
     ...sections,

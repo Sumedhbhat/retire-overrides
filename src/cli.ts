@@ -214,6 +214,7 @@ async function runEvaluation(input: {
       adapters: allAdapters(),
       ...(packageManagerRegistry ? { packageManagerRegistry } : {}),
       externalChanges: publisher ? await publisher.externalChanges() : [],
+      ...(publisher?.openAlerts ? { alerts: await publisher.openAlerts() } : {}),
       log,
       onGraph: (graph) => {
         for (const node of graph.nodes.values()) if (node.importer === undefined) seenNames.add(node.name);

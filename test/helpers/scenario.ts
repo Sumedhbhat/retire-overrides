@@ -10,6 +10,7 @@ import { BunAdapter } from "../../src/adapters/bun/bun.ts";
 import { NpmAdapter } from "../../src/adapters/npm/npm.ts";
 import { PnpmAdapter } from "../../src/adapters/pnpm/pnpm.ts";
 import { type Config, DEFAULT_CONFIG } from "../../src/config.ts";
+import type { AlertsInput } from "../../src/engine/alerts.ts";
 import type { ExternalChange } from "../../src/engine/context.ts";
 import type { Report } from "../../src/engine/report.ts";
 import { evaluate } from "../../src/engine/run.ts";
@@ -29,7 +30,7 @@ export interface FixtureRepo {
   /** Re-resolves the lockfile against the snapshot as it looked at `at`. */
   lock(snapshot: MetadataSnapshot, at: string, refresh?: string[]): Promise<void>;
   commit(message: string, at: string): Promise<string>;
-  evaluate(snapshot: MetadataSnapshot, now: string, config?: Partial<Config>, external?: ExternalChange[]): Promise<Report>;
+  evaluate(snapshot: MetadataSnapshot, now: string, config?: Partial<Config>, external?: ExternalChange[], alerts?: AlertsInput): Promise<Report>;
   dispose(): Promise<void>;
 }
 
@@ -71,7 +72,7 @@ export async function fixtureRepo(manager: Manager, files: Record<string, string
       });
       return (await run("git", ["rev-parse", "HEAD"], { cwd: dir })).stdout.trim();
     },
-    async evaluate(snapshot, now, config = {}, external = []) {
+    async evaluate(snapshot, now, config = {}, external = [], alerts) {
       const clock = new Date(now);
       const server = await startSnapshotRegistry(snapshot, { now: clock });
       try {
@@ -86,6 +87,7 @@ export async function fixtureRepo(manager: Manager, files: Record<string, string
           adapters: allAdapters(),
           packageManagerRegistry: server.url,
           externalChanges: external,
+          ...(alerts ? { alerts } : {}),
           registryLabel: "snapshot",
         });
       } finally {

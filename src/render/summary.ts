@@ -18,7 +18,8 @@ export function renderText(report: Report): string {
     }
     for (const v of report.vulnerabilities.filter((v) => v.ecosystem === p.ecosystem && v.project === p.dir)) {
       const ids = v.advisories.map((a) => a.id).join(", ") || v.instances.flatMap((i) => i.affectedBy).join(", ");
-      lines.push(`  vuln ${v.status.padEnd(13)} ${v.package} (${ids})${v.strategy ? ` via ${v.strategy}` : ""}${v.deferredTo ? ` → ${v.deferredTo}` : ""}`);
+      const alerts = (v.alerts ?? []).map((a) => `#${a.number}`).join(", ");
+      lines.push(`  vuln ${v.status.padEnd(13)} ${v.package} (${ids})${v.strategy ? ` via ${v.strategy}` : ""}${v.deferredTo ? ` → ${v.deferredTo}` : ""}${alerts ? ` [Dependabot ${alerts}]` : ""}`);
       for (const r of v.reasons) lines.push(`                ${r.code}: ${r.message}`);
     }
   }
@@ -33,6 +34,11 @@ export function renderText(report: Report): string {
   if (report.issues.length > 0) {
     lines.push("\nPlanned issues:");
     for (const i of report.issues) lines.push(`  ${i.title}`);
+  }
+  if (report.alerts?.status === "unavailable") lines.push(`\nDependabot alerts unavailable: ${report.alerts.note}`);
+  if (report.coverage && report.coverage.length > 0) {
+    lines.push("\nDependabot alerts not acted on:");
+    for (const c of report.coverage) lines.push(`  #${c.alert.number} ${c.alert.package} ${c.alert.advisory} (${c.alert.manifest}) ${c.reason}: ${c.message}`);
   }
   if (report.unsupported.length > 0) {
     lines.push("\nUnsupported (reported, not evaluated):");
@@ -63,11 +69,12 @@ export function renderMarkdown(report: Report): string {
     out.push("No overrides found.", "");
   }
   if (report.vulnerabilities.length > 0) {
-    out.push("| Fix | Package | Advisories | Strategy |", "|---|---|---|---|");
+    out.push("| Fix | Package | Advisories | Strategy | Dependabot |", "|---|---|---|---|---|");
     for (const v of report.vulnerabilities) {
       const ids = v.advisories.map((a) => (a.url ? `[${a.id}](${a.url})` : a.id)).join(", ");
       const strategy = v.strategy ?? v.reasons.map((r) => escapeCell(r.message)).join("<br>");
-      out.push(`| ${v.status} | ${v.package} | ${ids} | ${strategy} |`);
+      const alerts = (v.alerts ?? []).map((a) => `[#${a.number}](${a.url})`).join(", ") || "—";
+      out.push(`| ${v.status} | ${v.package} | ${ids} | ${strategy} | ${alerts} |`);
     }
     out.push("");
   }
@@ -79,6 +86,12 @@ export function renderMarkdown(report: Report): string {
   if (report.issues.length > 0) {
     out.push("**Planned issues**", "");
     for (const i of report.issues) out.push(`- ${i.title}`);
+    out.push("");
+  }
+  if (report.alerts?.status === "unavailable") out.push(`> **Dependabot alerts unavailable:** ${report.alerts.note}. Alerts were not cross-checked.`, "");
+  if (report.coverage && report.coverage.length > 0) {
+    out.push("**Dependabot alerts not acted on**", "");
+    for (const c of report.coverage) out.push(`- [#${c.alert.number}](${c.alert.url}) \`${c.alert.package}\` ${c.alert.advisory} in \`${c.alert.manifest}\`: ${c.reason}. ${c.message}`);
     out.push("");
   }
   if (report.unsupported.length > 0) {

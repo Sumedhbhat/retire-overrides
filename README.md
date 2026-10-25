@@ -74,6 +74,8 @@ Pin a release tag (`vX.Y.Z`) to stay exactly where you are, or the release branc
 - **A GitHub App** (recommended): give it repository permissions **Contents: Read and write**, **Pull requests: Read and write**, **Issues: Read and write** and **Metadata: Read**, then install it on the repository. Store the App ID as variable `RETIRE_OVERRIDES_APP_ID` and the private key as secret `RETIRE_OVERRIDES_APP_PRIVATE_KEY`, and use [examples/retire-overrides-app.yml](examples/retire-overrides-app.yml).
 - **A fine-grained personal access token** scoped to the repository, with the same permissions. Store it as the Actions secret `RETIRE_OVERRIDES_TOKEN`.
 
+Optionally, also grant **Dependabot alerts: Read**. With it, the tool links each fix to the open Dependabot alerts it addresses ("Fixes Dependabot alert #N" in the PR), and lists any alert it didn't act on, with the reason (unsupported ecosystem, not in the lockfile, not flagged by the advisory data, project blocked). Without it, the run still works and the report says the alerts couldn't be read; it never treats that as "no alerts". retire-overrides never dismisses an alert.
+
 `GITHUB_TOKEN` won't work. GitHub doesn't start workflows for PRs opened with `GITHUB_TOKEN`, so your CI would never run on generated PRs and auto-merge would never fire. A PR opened with an App or a personal token triggers `pull_request` CI the same way a human's PR does. If your changes ever need to touch `.github/workflows/`, the credential would also need **Workflows** permission, but retire-overrides only edits manifests and lockfiles.
 
 **3. Let auto-merge work** (optional, but recommended):
