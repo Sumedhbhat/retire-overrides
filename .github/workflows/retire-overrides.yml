@@ -28,6 +28,10 @@ on:
         description: Extra CLI arguments.
         type: string
         default: ""
+      bun-version:
+        description: Bun version to install for bun.lock projects (match your CI). Empty skips Bun.
+        type: string
+        default: ""
     secrets:
       token:
         description: Fine-grained token with Contents, Pull requests and Issues read/write.
@@ -66,6 +70,7 @@ jobs:
           config: ${{ inputs.config }}
           fail-on: ${{ inputs.fail-on }}
           args: ${{ inputs.args }}
+          bun-version: ${{ inputs.bun-version }}
 
   maintain:
     # Scheduled runs always use the default branch (and their payload has no repository object).
@@ -115,6 +120,7 @@ jobs:
           working-directory: repo
           config: ${{ inputs.config }}
           args: ${{ inputs.args }}
+          bun-version: ${{ inputs.bun-version }}
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -43,7 +43,7 @@ export class NpmBulkAdvisoryProvider implements AdvisoryProvider {
   }
 
   supports(ecosystem: EcosystemId): boolean {
-    return ecosystem === "npm" || ecosystem === "pnpm" || ecosystem === "yarn";
+    return ecosystem === "npm" || ecosystem === "pnpm" || ecosystem === "bun" || ecosystem === "yarn";
   }
 
   async advisoriesFor(_ecosystem: EcosystemId, versions: Map<string, string[]>): Promise<Map<string, Advisory[]>> {
@@ -139,7 +139,7 @@ export class GitHubAdvisoryProvider implements AdvisoryProvider {
   }
 
   supports(ecosystem: EcosystemId): boolean {
-    return ecosystem === "npm" || ecosystem === "pnpm" || ecosystem === "yarn";
+    return ecosystem === "npm" || ecosystem === "pnpm" || ecosystem === "bun" || ecosystem === "yarn";
   }
 
   async advisoriesFor(_ecosystem: EcosystemId, versions: Map<string, string[]>): Promise<Map<string, Advisory[]>> {

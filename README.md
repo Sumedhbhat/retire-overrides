@@ -16,6 +16,7 @@ It ships as three things that share one engine:
 |---|---|---|
 | npm | **Implemented** | `overrides` in the root package.json: global, nested/parent-scoped, version-selected keys, `.` entries, `$name` references |
 | pnpm | **Implemented** | `overrides` in pnpm-workspace.yaml (pnpm 10+) or `pnpm.overrides` in package.json (pnpm ≤ 10), chosen by the pinned pnpm version |
+| Bun | **Implemented** | `overrides`/`resolutions` in package.json with bun.lock. Bun 1.4+ honors parent-scoped and version-selected keys; Bun 1.3 honors only global keys |
 | Yarn | Planned | `resolutions` (Classic and modern) |
 | Python / uv | Planned | `override-dependencies`, `constraint-dependencies` |
 | Rust / Cargo | Planned | `[patch]`, `[replace]` |
@@ -75,6 +76,8 @@ Configuration is optional. To change a default, add `.github/retire-overrides.ym
 | `pull_request` | `validate` | none (`contents: read`) | Read-only evaluation of the PR's commit, posted as a job summary. Fails on `BLOCKED` by default (`fail-on` input). |
 | `schedule`, `push` to the default branch, `workflow_dispatch` | `maintain` | your App/token | Evaluates the default branch tip and opens, updates or closes PRs and issues. Runs are serialized. |
 
+For Bun projects, pass `with: { bun-version: <the version your CI uses> }`, because Bun's override behavior depends on the version.
+
 Untrusted PR code never runs with write credentials. The `validate` job doesn't receive the token, and resolution never runs install scripts.
 
 ## What it does
@@ -129,7 +132,7 @@ retire-overrides adapters                    # support matrix
 retire-overrides --version
 ```
 
-It needs Node.js 22.18 or later, git, and the package managers your projects use. It evaluates the committed `HEAD` and ignores uncommitted changes. Resolution runs `npm install --package-lock-only --ignore-scripts` and `pnpm install --lockfile-only --ignore-scripts`, so nothing is installed and no lifecycle scripts run. Your application tests still belong in your CI, which runs on the generated PRs.
+It needs Node.js 22.18 or later, git, and the package managers your projects use. It evaluates the committed `HEAD` and ignores uncommitted changes. Resolution runs `npm install --package-lock-only --ignore-scripts`, `pnpm install --lockfile-only --ignore-scripts` and `bun install --lockfile-only --ignore-scripts`, so nothing is installed and no lifecycle scripts run. Your application tests still belong in your CI, which runs on the generated PRs.
 
 ### Reproducing a decision
 

@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
-import { type FixtureRepo, fixtureRepo, type Manager } from "../helpers/scenario.ts";
+import { bunHonorsScopedOverrides } from "../../src/adapters/bun/bun.ts";
+import { type FixtureRepo, fixtureRepo, installedVersion, LOCKFILES, type Manager } from "../helpers/scenario.ts";
 import { appManifest, GHSA, universe } from "../helpers/universe.ts";
 
 const repos: FixtureRepo[] = [];
+// Bun 1.3.x only honors global overrides; 1.4+ honors parent-scoped ones like npm.
+const bunScoped = bunHonorsScopedOverrides(await installedVersion("bun"));
 after(() => Promise.all(repos.map((r) => r.dispose())));
 
 async function vulnerableApp(manager: Manager, deps: Record<string, string>, options: Parameters<typeof universe>[0] = {}) {
@@ -15,7 +18,7 @@ async function vulnerableApp(manager: Manager, deps: Record<string, string>, opt
   return repo;
 }
 
-for (const manager of ["npm", "pnpm"] as const) {
+for (const manager of ["npm", "pnpm", "bun"] as const) {
   describe(`${manager}: fixes for new advisories`, () => {
     it("adds the narrowest override when no parent release fixes the vulnerability", async () => {
       const repo = await vulnerableApp(manager, { "bundler-kit": "^2.4.0" });
@@ -41,9 +44,13 @@ for (const manager of ["npm", "pnpm"] as const) {
       assert.equal(change.autoMerge, true);
       // Newest mature release on the 3.x line, pinned exactly; never 4.0.0 and never "latest".
       assert.match(change.title, /override tar-lite to 3\.2\.0 for GHSA-2222-3333-4444/);
-      if (manager === "npm") {
+      if (manager === "npm" || (manager === "bun" && bunScoped)) {
         assert.match(change.patch, /\+\s+"bundler-kit": \{\n\+\s+"tar-lite": "3\.2\.0"/);
-        assert.deepEqual(change.selectors, ["npm:package.json:bundler-kit > tar-lite"]);
+        assert.deepEqual(change.selectors, [`${manager}:package.json:bundler-kit > tar-lite`]);
+      } else if (manager === "bun") {
+        // The only override shape Bun 1.3 honors: a global key.
+        assert.match(change.patch, /\+\s+"overrides": \{\n\+\s+"tar-lite": "3\.2\.0"/);
+        assert.deepEqual(change.selectors, ["bun:package.json:tar-lite"]);
       } else {
         assert.match(change.patch, /bundler-kit>tar-lite: 3\.2\.0/);
       }
@@ -60,7 +67,7 @@ for (const manager of ["npm", "pnpm"] as const) {
       assert.equal(vuln.strategy, "lockfile-refresh");
       const change = report.changes.find((c) => c.identity === vuln.change)!;
       assert.equal(change.kind, "lockfile-refresh");
-      assert.deepEqual(change.files, [manager === "npm" ? "package-lock.json" : "pnpm-lock.yaml"]);
+      assert.deepEqual(change.files, [LOCKFILES[manager]]);
     });
 
     it("bumps a direct parent when a newer parent release fixes it", async () => {

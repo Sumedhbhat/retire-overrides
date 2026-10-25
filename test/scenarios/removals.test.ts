@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 import type { OverrideReport } from "../../src/engine/report.ts";
-import { type FixtureRepo, fixtureRepo, type Manager, toolTrailers } from "../helpers/scenario.ts";
+import { bunHonorsScopedOverrides } from "../../src/adapters/bun/bun.ts";
+import { type FixtureRepo, fixtureRepo, installedVersion, type Manager, toolTrailers } from "../helpers/scenario.ts";
 import { appManifest, GHSA, GHSA_LATE, universe, type UniverseOptions } from "../helpers/universe.ts";
 
 const repos: FixtureRepo[] = [];
@@ -9,12 +10,19 @@ after(() => Promise.all(repos.map((r) => r.dispose())));
 
 const ADDED_AT = "2026-02-10T00:00:00Z";
 
-function overrideFiles(manager: Manager, deps: Record<string, string>, value = "3.1.4"): Record<string, string | object> {
-  if (manager === "npm") return { "package.json": appManifest(deps, { overrides: { "bundler-kit": { "tar-lite": value } } }) };
+// Bun 1.3.x only honors global overrides, so its fixtures use one.
+const bunGlobal = !bunHonorsScopedOverrides(await installedVersion("bun"));
+
+function overrideFiles(manager: Manager, deps: Record<string, string>, value = "3.1.4", global = false): Record<string, string | object> {
+  if (global && manager === "pnpm") return { "package.json": appManifest(deps), "pnpm-workspace.yaml": `overrides:\n  tar-lite: ${value}\n` };
+  if ((manager === "bun" && bunGlobal) || global) return { "package.json": appManifest(deps, { overrides: { "tar-lite": value } }) };
+  if (manager === "npm" || manager === "bun") return { "package.json": appManifest(deps, { overrides: { "bundler-kit": { "tar-lite": value } } }) };
   return { "package.json": appManifest(deps), "pnpm-workspace.yaml": `overrides:\n  bundler-kit>tar-lite: ${value}\n` };
 }
 
-function selector(manager: Manager): { file: string; selector: string } {
+function selector(manager: Manager, global = false): { file: string; selector: string } {
+  if (global) return { file: manager === "pnpm" ? "pnpm-workspace.yaml" : "package.json", selector: "tar-lite" };
+  if (manager === "bun") return { file: "package.json", selector: bunGlobal ? "tar-lite" : "bundler-kit > tar-lite" };
   return manager === "npm"
     ? { file: "package.json", selector: "bundler-kit > tar-lite" }
     : { file: "pnpm-workspace.yaml", selector: "bundler-kit>tar-lite" };
@@ -26,12 +34,12 @@ function selector(manager: Manager): { file: string; selector: string } {
  */
 async function overriddenApp(
   manager: Manager,
-  options: UniverseOptions & { bumpParentAt?: string; byTool?: boolean; value?: string },
+  options: UniverseOptions & { bumpParentAt?: string; byTool?: boolean; value?: string; extraDeps?: Record<string, string>; global?: boolean },
 ): Promise<FixtureRepo> {
-  const repo = await fixtureRepo(manager, overrideFiles(manager, { "bundler-kit": "^2.4.0" }, options.value));
+  const repo = await fixtureRepo(manager, overrideFiles(manager, { "bundler-kit": "^2.4.0", ...options.extraDeps }, options.value, options.global));
   repos.push(repo);
   await repo.lock(universe(options), ADDED_AT);
-  const { file, selector: sel } = selector(manager);
+  const { file, selector: sel } = selector(manager, options.global);
   await repo.commit(options.byTool === false ? "pin tar-lite" : toolTrailers(manager, file, sel, GHSA), ADDED_AT);
   if (options.bumpParentAt) {
     const manifest = await repo.readJson("package.json");
@@ -54,7 +62,7 @@ function codes(o: OverrideReport): string[] {
 
 const fixed = { bundlerFixedAt: "2026-03-01T00:00:00Z", bumpParentAt: "2026-03-16T00:00:00Z" };
 
-for (const manager of ["npm", "pnpm"] as const) {
+for (const manager of ["npm", "pnpm", "bun"] as const) {
   describe(`${manager}: override removal`, () => {
     it("NEEDED while the parent still pins a vulnerable range, with one stale issue after 90 days", async () => {
       const repo = await overriddenApp(manager, {});
@@ -85,8 +93,19 @@ for (const manager of ["npm", "pnpm"] as const) {
       assert.equal(change.autoMerge, true);
       assert.match(change.commitMessage, /^Retire-Overrides-Action: remove-override$/m);
       assert.ok(change.branch.startsWith("retire-overrides/remove-override/tar-lite-"));
-      if (manager === "npm") assert.doesNotMatch(change.patch, /^\+.*overrides/m);
+      if (manager !== "pnpm") assert.doesNotMatch(change.patch, /^\+.*overrides/m);
       else assert.match(change.patch, /deleted file mode/);
+    });
+
+    it("REMOVABLE even when a plugin accepts any version as a peer", async () => {
+      const repo = await overriddenApp(manager, { ...fixed, global: true, extraDeps: { "peer-plugin": "^1.0.0" } });
+      const report = await repo.evaluate(universe(fixed), "2026-03-21T00:00:00Z");
+      const o = only(report);
+      assert.equal(o.status, "REMOVABLE", JSON.stringify(o.reasons));
+      const peer = o.evidence.parentConstraints?.find((c) => c.parent.startsWith("peer-plugin@"));
+      assert.ok(peer, JSON.stringify(o.evidence.parentConstraints));
+      assert.equal(peer.peer, true);
+      assert.deepEqual(peer.permitsVulnerable, []);
     });
 
     it("WAITING when removal would pull in a release younger than 14 days", async () => {
@@ -94,6 +113,12 @@ for (const manager of ["npm", "pnpm"] as const) {
       const repo = await overriddenApp(manager, options);
       const report = await repo.evaluate(universe(options), "2026-03-21T00:00:00Z");
       const o = only(report);
+      if (manager === "bun" && bunGlobal) {
+        // Bun 1.3 can't refresh one package, so the locked 3.1.4 stays and nothing young is pulled in.
+        assert.equal(o.status, "REMOVABLE", JSON.stringify(o.reasons));
+        assert.match(o.evidence.refreshLimitation ?? "", /cannot refresh single packages/);
+        return;
+      }
       assert.equal(o.status, "WAITING");
       assert.ok(codes(o).includes("release-too-new"));
       assert.equal(report.changes.length, 0);
@@ -142,6 +167,12 @@ for (const manager of ["npm", "pnpm"] as const) {
       const repo = await overriddenApp(manager, fixed);
       const report = await repo.evaluate(universe(options), "2026-03-21T00:00:00Z");
       const o = only(report);
+      if (manager === "bun" && bunGlobal) {
+        // No new version is resolved on Bun 1.3 (see refreshLimitation), so no release date is needed.
+        assert.equal(o.status, "REMOVABLE", JSON.stringify(o.reasons));
+        assert.deepEqual(o.evidence.changedVersions, []);
+        return;
+      }
       assert.equal(o.status, "BLOCKED");
       assert.ok(codes(o).includes("release-date-unknown"));
     });

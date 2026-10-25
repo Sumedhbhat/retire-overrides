@@ -73,8 +73,8 @@ describe("npm overrides", () => {
 
   it("writes a scoped override under an existing string entry for the parent", async () => {
     const dir = await tempDir({ "package.json": JSON.stringify({ name: "a", overrides: { "bundler-kit": "2.4.1" } }), "package-lock.json": "{}" });
-    const selector = await new NpmAdapter().writeOverride(npmProject, dir, { target: { name: "tar-lite" }, scope: [{ name: "bundler-kit" }], value: "3.2.0" });
-    assert.equal(selector, "bundler-kit > tar-lite");
+    const written = await new NpmAdapter().writeOverride(npmProject, dir, { target: { name: "tar-lite" }, scope: [{ name: "bundler-kit" }], value: "3.2.0" });
+    assert.deepEqual(written, { file: "package.json", selector: "bundler-kit > tar-lite" });
     const data = JSON.parse(await readFile(join(dir, "package.json"), "utf8")) as Record<string, unknown>;
     assert.deepEqual(data.overrides, { "bundler-kit": { ".": "2.4.1", "tar-lite": "3.2.0" } });
   });
@@ -144,9 +144,25 @@ describe("planned adapters", () => {
       "Directory.Packages.props": "<Project><PropertyGroup><CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled></PropertyGroup></Project>",
       "build.gradle.kts": "dependencies { constraints { implementation(\"a:b:1\") } }",
       "package.json": JSON.stringify({ resolutions: { foo: "1.0.0" } }),
+      "yarn.lock": "",
     });
     const found = (await Promise.all(plannedAdapters.map((a) => a.detect(dir)))).flatMap((r) => r.unsupported);
     assert.deepEqual(found.map((u) => u.ecosystem).sort(), ["cargo", "go", "gradle", "maven", "nuget", "uv", "uv", "yarn"]);
     assert.ok(found.every((u) => /planned, not implemented/.test(u.message)));
+  });
+});
+
+describe("bun", () => {
+  it("parses bun.lock's trailing commas without touching commas inside strings", async () => {
+    const { parseBunLock, splitKey } = await import("../../src/adapters/bun/bun.ts");
+    const lock = parseBunLock('{\n  "a": ["x,]", { "b": "c", },],\n  "d": "e\\",}",\n}\n');
+    assert.deepEqual(lock, { a: ["x,]", { b: "c" }], d: 'e",}' });
+    assert.deepEqual(splitKey("legacy-pack/@s/tar/tar-lite"), ["legacy-pack", "@s/tar", "tar-lite"]);
+  });
+
+  it("knows which Bun versions honor scoped overrides", async () => {
+    const { bunHonorsScopedOverrides } = await import("../../src/adapters/bun/bun.ts");
+    assert.equal(bunHonorsScopedOverrides("1.3.14"), false);
+    assert.equal(bunHonorsScopedOverrides("1.4.0"), true);
   });
 });

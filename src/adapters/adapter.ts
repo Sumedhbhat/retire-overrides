@@ -35,6 +35,18 @@ export interface ResolveOptions {
   refresh: string[];
   /** Registry URL to resolve against instead of the repository's configuration. */
   registry?: string;
+  /**
+   * When the package manager cannot refresh packages selectively, allow re-resolving the whole tree
+   * instead. Fix candidates allow it (verification flags the incidental upgrades); removals do not.
+   */
+  fullRefreshAllowed?: boolean;
+}
+
+export interface OverrideCapabilities {
+  /** Overrides can be restricted to a parent (`parent > pkg`, `parent>pkg`). */
+  parentScope: boolean;
+  /** Keys can carry a version selector (`pkg@3`, `parent@2 > pkg`). */
+  versionSelector: boolean;
 }
 
 export interface OverrideWrite {
@@ -71,8 +83,8 @@ export interface ImplementedAdapter extends EcosystemAdapter {
   resolve(project: Project, dir: string, options: ResolveOptions): Promise<void>;
 
   removeOverride(project: Project, dir: string, entry: OverrideEntry): Promise<void>;
-  /** Writes an override and returns the selector it was written under. */
-  writeOverride(project: Project, dir: string, write: OverrideWrite): Promise<string>;
+  /** Writes an override and returns the file and selector it was written under. */
+  writeOverride(project: Project, dir: string, write: OverrideWrite): Promise<{ file: string; selector: string }>;
   /** Rewrites a direct dependency's spec in an importer's manifest. */
   setDependencySpec(project: Project, dir: string, importer: string, name: string, spec: string): Promise<void>;
   /** Declared spec of a direct dependency in an importer's manifest. */
@@ -82,6 +94,10 @@ export interface ImplementedAdapter extends EcosystemAdapter {
   overrideApplies(entry: OverrideEntry, path: DependencyPath): boolean;
   /** Selector text the adapter would write for a scope, for identities and reports. */
   selectorFor(target: PackageSelector, scope: PackageSelector[]): string;
+  /** Set when this package-manager version cannot refresh single packages (removals then keep locked versions). */
+  refreshLimitation?(project: Project): string | undefined;
+  /** Which selector shapes the project's package-manager version honors when writing new overrides. */
+  overrideCapabilities(project: Project): OverrideCapabilities;
   /** 1-based line of an entry in its file, for blame. */
   locate(project: Project, dir: string, entry: OverrideEntry): Promise<number | undefined>;
 }

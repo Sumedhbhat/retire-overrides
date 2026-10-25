@@ -13,7 +13,7 @@ import type {
   UnsupportedForm,
 } from "../../types.ts";
 import { parseSpec } from "../../versions.ts";
-import type { ImplementedAdapter, OverrideWrite, Project, ResolveOptions } from "../adapter.ts";
+import type { ImplementedAdapter, OverrideCapabilities, OverrideWrite, Project, ResolveOptions } from "../adapter.ts";
 import {
   cliVersion,
   findFiles,
@@ -268,7 +268,11 @@ export class PnpmAdapter implements ImplementedAdapter {
     else await writeFile(path, text);
   }
 
-  async writeOverride(project: Project, dir: string, write: OverrideWrite): Promise<string> {
+  overrideCapabilities(): OverrideCapabilities {
+    return { parentScope: true, versionSelector: true };
+  }
+
+  async writeOverride(project: Project, dir: string, write: OverrideWrite): Promise<{ file: string; selector: string }> {
     const key = write.replaces?.keyPath.at(-1) ?? this.selectorFor(write.target, write.scope);
     const file = write.replaces?.file ?? (await this.writeLocation(project, dir));
     const path = join(dir, file);
@@ -285,7 +289,7 @@ export class PnpmAdapter implements ImplementedAdapter {
       doc.setIn(["overrides", key], write.value);
       await writeFile(path, String(doc));
     }
-    return key;
+    return { file, selector: key };
   }
 
   /** Adds to whichever honored file already has overrides; otherwise the one this pnpm version prefers. */
