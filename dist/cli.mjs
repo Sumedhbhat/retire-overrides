@@ -10989,7 +10989,7 @@ function readMarker(body, kind) {
 
 // src/version.ts
 function toolVersion() {
-  const base = true ? "0.1.0" : JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+  const base = true ? "0.2.0" : JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
   const ref = process.env.RETIRE_OVERRIDES_REF;
   return ref ? `${base} (${ref})` : base;
 }
