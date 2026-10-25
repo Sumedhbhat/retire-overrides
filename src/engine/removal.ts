@@ -7,6 +7,7 @@ import {
   ageInDays,
   availableVersions,
   isMajorChange,
+  maxSatisfying,
   parseSpec,
   permittedVulnerableVersions,
 } from "../versions.ts";
@@ -175,8 +176,15 @@ export async function evaluateRemoval(
         block("constraint-unparseable", `${parentLabel} declares ${edge.as}@"${declared}", which is not a registry range`);
         continue;
       }
-      const permits = permittedVulnerableVersions(spec.range, targetMeta, advisories);
-      constraints.push({ parent: parentLabel, dependency: edge.as, range: declared, permitsVulnerable: permits });
+      // A peer range doesn't pick a version: the copy comes from another edge (checked on its own) or
+      // from auto-install, which takes the highest satisfying release. Judge peers by that pick.
+      const peer = await ctx.isPeerEdge(edge.parent, edge.as).catch(() => false);
+      let permits = permittedVulnerableVersions(spec.range, targetMeta, advisories);
+      if (peer) {
+        const pick = maxSatisfying(targetMeta, spec.range, ctx.now);
+        permits = pick !== null && permits.includes(pick) ? [pick] : [];
+      }
+      constraints.push({ parent: parentLabel, dependency: edge.as, range: declared, permitsVulnerable: permits, ...(peer ? { peer: true } : {}) });
       if (permits.length > 0) {
         need(
           "parent-permits-vulnerable",
@@ -208,6 +216,7 @@ export async function evaluateRemoval(
   const changed: VersionEvidence[] = [];
   const blockers: string[] = [];
   const added = addedVersions(before, after);
+  const young: string[] = [];
   for (const { name, version } of added) {
     const evidence: VersionEvidence = { name, version };
     try {
@@ -220,10 +229,7 @@ export async function evaluateRemoval(
         evidence.ageDays = Math.floor(ageInDays(published, ctx.now) * 10) / 10;
         if (ageInDays(published, ctx.now) < ctx.config.minimumReleaseAgeDays) {
           report.status = worst(report.status, "WAITING");
-          report.reasons.push({
-            code: "release-too-new",
-            message: `${name}@${version} was published ${evidence.ageDays} days ago; ordinary upgrades wait ${ctx.config.minimumReleaseAgeDays} days`,
-          });
+          young.push(`${name}@${version} (${evidence.ageDays} days)`);
         }
       }
     } catch (error) {
@@ -236,6 +242,16 @@ export async function evaluateRemoval(
     }
   }
   report.evidence.changedVersions = changed;
+  if (young.length > 0) {
+    // One reason for all of them; the full list with ages is in evidence.changedVersions.
+    const shown = young.slice(0, 5).join(", ");
+    report.reasons.push({
+      code: "release-too-new",
+      message: `${young.length} newly resolved version${young.length === 1 ? " is" : "s are"} younger than ${ctx.config.minimumReleaseAgeDays} days: ${shown}${young.length > 5 ? ` and ${young.length - 5} more` : ""}`,
+    });
+  }
+  const limitation = adapter.refreshLimitation?.(project);
+  if (limitation) report.evidence.refreshLimitation = limitation;
 
   // Unknown intent never leads to an automatic removal.
   if ((report.status === "REMOVABLE" || report.status === "WAITING") && intent.kind === "unknown") {

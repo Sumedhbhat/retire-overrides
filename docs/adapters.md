@@ -32,7 +32,22 @@ Semantics: `parent>pkg` applies only when `parent` is the **immediate** parent. 
 
 Resolution: `pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile`, then `pnpm update --depth Infinity --no-save --lockfile-only <pkgs>`, adding `--recursive` only for workspaces (pnpm 10 silently updates nothing when `--recursive` is passed outside one).
 
-### Both
+### Bun (implemented)
+
+| | Supported | Reported as unsupported |
+|---|---|---|
+| Location | `overrides` and `resolutions` in the root package.json | — |
+| Keys, Bun 1.4+ | global (`pkg`), version-selected (`pkg@3`), parent-scoped one level deep (`{ "parent": { "pkg": … } }`, `parent@2` too) | deeper nesting, `.` entries |
+| Keys, Bun 1.3.x | global (`pkg`) only | parent-scoped and version-selected keys: Bun 1.3 **silently ignores** them, so they protect nothing |
+| Values | semver versions and ranges | `$name` references, `npm:` aliases, git, file and URL values, Yarn-style paths (`**/pkg`) |
+| Lockfile | text `bun.lock`, lockfileVersion 1–3 | binary `bun.lockb` (migrate with `bun install --save-text-lockfile`) |
+| Workspaces | every workspace in the shared lockfile, including copies nested under a workspace (`web/pkg`) | — |
+
+Semantics: a Bun nested override applies only when the scope is the **direct parent**. This was verified against Bun 1.4, and it differs from npm, where the override reaches the whole subtree. On Bun 1.3 a new override is always global, so the planner refuses (BLOCKED) when vulnerable copies sit on several release lines, because one global pin would force them all onto one version. Pin the Bun version in `packageManager` or pass `bun-version` to the action. A pin and an installed Bun on different sides of 1.4.0 count as a mismatch.
+
+Resolution: `bun install --lockfile-only --ignore-scripts`. To avoid trusting locked versions, the adapter deletes the affected packages' entries from bun.lock first. It doesn't use `bun update <pkg>`, because on 1.3.x that adds a transitive package to package.json as a direct dependency.
+
+### npm, pnpm and Bun
 
 - If the pinned package-manager major differs from the installed one, every override in that project is BLOCKED. Enable Corepack (the action does) or install the pinned version.
 - Declared ranges come from the lockfile when it records them (npm), and otherwise from the published manifest in the registry (pnpm).

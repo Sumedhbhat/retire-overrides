@@ -11,7 +11,7 @@ import type {
   UnsupportedForm,
 } from "../../types.ts";
 import { parseSpec } from "../../versions.ts";
-import type { ImplementedAdapter, OverrideWrite, Project, ResolveOptions } from "../adapter.ts";
+import type { ImplementedAdapter, OverrideCapabilities, OverrideWrite, Project, ResolveOptions } from "../adapter.ts";
 import {
   cliVersion,
   findFiles,
@@ -184,6 +184,7 @@ export class NpmAdapter implements ImplementedAdapter {
         version: typeof entry.version === "string" ? entry.version : "0.0.0",
         declared,
         children: new Map(),
+        peers: peerOnly(entry),
       };
       if (isImporter) {
         node.importer = location;
@@ -224,13 +225,17 @@ export class NpmAdapter implements ImplementedAdapter {
     await writeJsonDocument(path, doc);
   }
 
-  async writeOverride(project: Project, dir: string, write: OverrideWrite): Promise<string> {
+  overrideCapabilities(): OverrideCapabilities {
+    return { parentScope: true, versionSelector: true };
+  }
+
+  async writeOverride(project: Project, dir: string, write: OverrideWrite): Promise<{ file: string; selector: string }> {
     const path = join(dir, project.manifest);
     const doc = await readJsonDocument(path);
     if (write.replaces) {
       setKeyPath(doc.data, write.replaces.keyPath, write.value);
       await writeJsonDocument(path, doc);
-      return write.replaces.selector;
+      return { file: write.replaces.file, selector: write.replaces.selector };
     }
     if (!isRecord(doc.data.overrides)) doc.data.overrides = {};
     let node = doc.data.overrides as Record<string, unknown>;
@@ -245,7 +250,7 @@ export class NpmAdapter implements ImplementedAdapter {
     if (isRecord(node[key])) (node[key] as Record<string, unknown>)["."] = write.value;
     else node[key] = write.value;
     await writeJsonDocument(path, doc);
-    return this.selectorFor(write.target, write.scope);
+    return { file: project.manifest, selector: this.selectorFor(write.target, write.scope) };
   }
 
   async directSpec(project: Project, dir: string, importer: string, name: string): Promise<string | undefined> {
@@ -281,7 +286,13 @@ function importerManifest(project: Project, importer: string): string {
   return projectPath(project.dir, importer === "" ? "package.json" : posix.join(importer, "package.json"));
 }
 
-function asStrings(value: unknown): Record<string, string> {
+/** Names declared in peerDependencies and nowhere else. */
+export function peerOnly(entry: Record<string, unknown>): Set<string> {
+  const other = new Set([...Object.keys(asStrings(entry.dependencies)), ...Object.keys(asStrings(entry.optionalDependencies))]);
+  return new Set(Object.keys(asStrings(entry.peerDependencies)).filter((n) => !other.has(n)));
+}
+
+export function asStrings(value: unknown): Record<string, string> {
   if (!isRecord(value)) return {};
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(value)) if (typeof v === "string") out[k] = v;
@@ -313,7 +324,7 @@ function resolveLocation(packages: Record<string, Record<string, unknown>>, from
   }
 }
 
-function deleteKeyPath(root: Record<string, unknown>, keyPath: string[]): void {
+export function deleteKeyPath(root: Record<string, unknown>, keyPath: string[]): void {
   const parents: Array<Record<string, unknown>> = [root];
   let node: unknown = root;
   for (const key of keyPath.slice(0, -1)) {
@@ -333,7 +344,7 @@ function deleteKeyPath(root: Record<string, unknown>, keyPath: string[]): void {
   }
 }
 
-function setKeyPath(root: Record<string, unknown>, keyPath: string[], value: string): void {
+export function setKeyPath(root: Record<string, unknown>, keyPath: string[], value: string): void {
   let node: Record<string, unknown> = root;
   for (const key of keyPath.slice(0, -1)) {
     if (!isRecord(node[key])) node[key] = {};

@@ -59,6 +59,8 @@ export function universe(o: UniverseOptions = {}): MetadataSnapshot {
         time: { "1.0.0": "2024-07-01T00:00:00Z" },
       },
       "left-pad": { versions: { "1.3.0": {} }, time: { "1.3.0": "2020-01-01T00:00:00Z" } },
+      // A plugin that accepts any tar-lite as a peer, like unplugin does for esbuild.
+      "peer-plugin": { versions: { "1.0.0": { peerDependencies: { "tar-lite": "*" } } }, time: { "1.0.0": "2024-01-01T00:00:00Z" } },
     },
     advisories: o.advisories ?? [
       { id: GHSA, package: "tar-lite", ranges: ["<3.1.4"], severity: "high", title: "Path traversal in tar-lite", published: "2026-02-01T00:00:00Z" },

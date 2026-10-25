@@ -21,11 +21,13 @@ The override comes out in isolation, and the affected packages are re-resolved f
 | Check | Failure means |
 |---|---|
 | Every resolved copy of the target that the override governed is outside every affected range of every advisory for the package | `NEEDED` (`vulnerable-without-override`) |
-| For every edge into those copies, the parent's declared range permits no *published* version an advisory affects | `NEEDED` (`parent-permits-vulnerable`) |
+| For every edge into those copies, the parent's declared range permits no *published* version an advisory affects. A peer-only range is judged by the release auto-install would pick (the highest satisfying one), because a peer doesn't choose a version itself. Otherwise `peerDependencies: { pkg: "*" }` would keep every override forever | `NEEDED` (`parent-permits-vulnerable`) |
 | Auditing the whole new graph turns up no finding the baseline lacked | `NEEDED` (`introduces-vulnerability`) |
 | Every version that is new relative to the baseline has a known publish time | `BLOCKED` (`release-date-unknown`) |
 | Every such version is at least `minimumReleaseAgeDays` old | `WAITING` (`release-too-new`) |
 | Metadata, advisory data, resolution and constraint parsing all succeed | `BLOCKED` |
+
+When a package manager can't refresh a single package (Bun 1.3), locked versions inside declared ranges are kept during removal. The report says so in `evidence.refreshLimitation`, and the constraint and per-copy checks above carry the safety guarantee.
 
 When several apply, NEEDED wins (the override is definitely still needed), then BLOCKED, then WAITING. Statuses REMOVABLE and WAITING turn into `REVIEW_NEEDED` unless the tool created the override (trailers) or `manage` opts it in. A version change that leaves a compatible line (major, or minor for 0.x) withholds auto-merge.
 

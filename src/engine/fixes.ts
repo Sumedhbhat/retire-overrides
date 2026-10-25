@@ -214,7 +214,7 @@ async function verify(input: VerifyInput, candidate: Candidate): Promise<Verdict
   const outcome = await withScratch(ctx.options.repo, ctx.options.commit, async (dir) => {
     try {
       const refresh = await candidate.apply(dir);
-      await adapter.resolve(project, dir, { refresh, ...registryOption(ctx) });
+      await adapter.resolve(project, dir, { refresh, fullRefreshAllowed: true, ...registryOption(ctx) });
       const graph = await adapter.readGraph(project, dir);
       return { graph, ...(await diffWorktree(dir)) };
     } catch (error) {
@@ -445,16 +445,28 @@ async function addOverride(
       }
     }
   }
+  const caps = adapter.overrideCapabilities(project);
+  const needsParentVersion = [...parentScopes.values()].some((p) => p.scope.range !== undefined);
   let writes: OverrideWrite[];
-  if (parentScopes.size <= ctx.config.maxScopedParents) {
+  if (caps.parentScope && parentScopes.size <= ctx.config.maxScopedParents && (caps.versionSelector || !needsParentVersion)) {
     writes = [...parentScopes.values()].map((p) => ({ target: { name: meta.name }, scope: [p.scope], value: p.value }));
   } else {
     const byLine = new Map<string, string>();
     for (const instance of vulnerable) byLine.set(compatibleLine(instance.version), choices.get(instance.nodeKey)!.version);
-    writes = [...byLine].map(([line, value]) => ({ target: { name: meta.name, range: line }, scope: [], value }));
+    if (caps.versionSelector) {
+      writes = [...byLine].map(([line, value]) => ({ target: { name: meta.name, range: line }, scope: [], value }));
+    } else if (byLine.size === 1) {
+      // Only global overrides are honored: the pin applies to every copy, so verification checks them all.
+      writes = [{ target: { name: meta.name }, scope: [], value: [...byLine.values()][0]! }];
+    } else {
+      return {
+        code: "unsupported-scope",
+        message: `${project.packageManager.name} ${project.packageManager.pinned ?? project.packageManager.installed} only honors global overrides, but vulnerable copies of ${meta.name} are on several release lines (${[...byLine.keys()].join(", ")}); one global pin cannot fix them all`,
+      };
+    }
   }
   const major = [...choices.values()].some((c) => c.major);
-  const selectors = writes.map((w) => selectorKey(project.ecosystem, overrideFile(adapter, project), adapter.selectorFor(w.target, w.scope)));
+  const selectors: string[] = [];
   return {
     kind: "add-override",
     summary: `override ${meta.name} to ${[...new Set(writes.map((w) => w.value))].join(", ")}`,
@@ -462,24 +474,19 @@ async function addOverride(
       "No parent release fixes this inside existing ranges, so an override is the last resort.",
       ...writes.map((w) => `\`${adapter.selectorFor(w.target, w.scope)}\`: \`${w.value}\` (exact pin: outside every affected range, removed again once upstream catches up)`),
     ],
+    // Filled in by apply() with the files and selectors actually written, so trailers match the entries.
     selectors,
     intended: [meta.name],
     major,
     async apply(dir) {
-      const written: string[] = [];
-      for (const w of writes) written.push(await adapter.writeOverride(project, dir, w));
+      selectors.length = 0;
+      for (const w of writes) {
+        const written = await adapter.writeOverride(project, dir, w);
+        selectors.push(selectorKey(project.ecosystem, written.file, written.selector));
+      }
       return [meta.name];
     },
   };
-}
-
-/** Where an adapter writes new overrides, for the selector trailer. Verification records the real file. */
-function overrideFile(adapter: ImplementedAdapter, project: Project): string {
-  if (adapter.id === "pnpm") {
-    const major = semver.coerce(project.packageManager.pinned ?? project.packageManager.installed)?.major ?? 0;
-    return major >= 10 ? (project.dir ? `${project.dir}/pnpm-workspace.yaml` : "pnpm-workspace.yaml") : project.manifest;
-  }
-  return project.manifest;
 }
 
 function edgeLabel(edge: Edge): string {
