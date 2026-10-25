@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 import { bunHonorsScopedOverrides } from "../../src/adapters/bun/bun.ts";
+import { yarnLine } from "../../src/adapters/yarn/yarn.ts";
 import { type FixtureRepo, fixtureRepo, installedVersion, LOCKFILES, type Manager } from "../helpers/scenario.ts";
 import { appManifest, GHSA, universe } from "../helpers/universe.ts";
 
 const repos: FixtureRepo[] = [];
 // Bun 1.3.x only honors global overrides; 1.4+ honors parent-scoped ones like npm.
 const bunScoped = bunHonorsScopedOverrides(await installedVersion("bun"));
+// Yarn Classic matches resolution keys against the whole path from the root; Berry uses parent/pkg.
+const yarnClassic = yarnLine(await installedVersion("yarn")) === "classic";
 after(() => Promise.all(repos.map((r) => r.dispose())));
 
 async function vulnerableApp(manager: Manager, deps: Record<string, string>, options: Parameters<typeof universe>[0] = {}) {
@@ -18,7 +21,7 @@ async function vulnerableApp(manager: Manager, deps: Record<string, string>, opt
   return repo;
 }
 
-for (const manager of ["npm", "pnpm", "bun"] as const) {
+for (const manager of ["npm", "pnpm", "bun", "yarn"] as const) {
   describe(`${manager}: fixes for new advisories`, () => {
     it("adds the narrowest override when no parent release fixes the vulnerability", async () => {
       const repo = await vulnerableApp(manager, { "bundler-kit": "^2.4.0" });
@@ -51,6 +54,10 @@ for (const manager of ["npm", "pnpm", "bun"] as const) {
         // The only override shape Bun 1.3 honors: a global key.
         assert.match(change.patch, /\+\s+"overrides": \{\n\+\s+"tar-lite": "3\.2\.0"/);
         assert.deepEqual(change.selectors, ["bun:package.json:tar-lite"]);
+      } else if (manager === "yarn") {
+        const key = yarnClassic ? "**/bundler-kit/tar-lite" : "bundler-kit/tar-lite";
+        assert.match(change.patch, new RegExp(`\\+\\s+"resolutions": \\{\\n\\+\\s+"${key.replace(/\*/g, "\\*")}": "3\\.2\\.0"`));
+        assert.deepEqual(change.selectors, [`yarn:package.json:${key}`]);
       } else {
         assert.match(change.patch, /bundler-kit>tar-lite: 3\.2\.0/);
       }

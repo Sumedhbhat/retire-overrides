@@ -65,7 +65,7 @@ async function handle(
     const version = tarball[2]!;
     if (!pkg?.versions[version]) return send(res, 404, { error: "not found" });
     res.setHeader("content-type", "application/octet-stream");
-    res.end(syntheticTarball(tarball[1]!, version));
+    res.end(syntheticTarball(tarball[1]!, version, pkg.versions[version]));
     return;
   }
 
@@ -86,7 +86,7 @@ function packument(name: string, pkg: SnapshotPackage, now: Date, baseUrl: strin
   const file = name.startsWith("@") ? name.split("/")[1]! : name;
   for (const v of visible) {
     const meta = pkg.versions[v]!;
-    const tgz = syntheticTarball(name, v);
+    const tgz = syntheticTarball(name, v, meta);
     versions[v] = {
       name,
       version: v,
@@ -154,12 +154,27 @@ function send(res: ServerResponse, status: number, body: unknown): void {
 
 const tarballCache = new Map<string, Buffer>();
 
-/** A minimal, deterministic package tarball containing only package/package.json. */
-export function syntheticTarball(name: string, version: string): Buffer {
-  const key = `${name}@${version}`;
-  const cached = tarballCache.get(key);
+/**
+ * A minimal, deterministic package tarball containing only package/package.json. The manifest carries
+ * the snapshot's dependency fields, because some package managers (Yarn Classic) read dependencies
+ * from the tarball rather than the packument.
+ */
+export function syntheticTarball(
+  name: string,
+  version: string,
+  meta: { dependencies?: Record<string, string>; optionalDependencies?: Record<string, string>; peerDependencies?: Record<string, string> } = {},
+): Buffer {
+  const manifest = JSON.stringify({
+    name,
+    version,
+    ...(meta.dependencies ? { dependencies: meta.dependencies } : {}),
+    ...(meta.optionalDependencies ? { optionalDependencies: meta.optionalDependencies } : {}),
+    ...(meta.peerDependencies ? { peerDependencies: meta.peerDependencies } : {}),
+  });
+  const cached = tarballCache.get(manifest);
   if (cached) return cached;
-  const content = Buffer.from(`${JSON.stringify({ name, version })}\n`);
+  const key = manifest;
+  const content = Buffer.from(`${manifest}\n`);
   const header = Buffer.alloc(512);
   header.write("package/package.json", 0, "utf8");
   header.write("0000644\0", 100);

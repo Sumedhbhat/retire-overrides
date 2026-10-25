@@ -55,12 +55,6 @@ class PlannedAdapter implements EcosystemAdapter {
 
 export const plannedAdapters: EcosystemAdapter[] = [
   new PlannedAdapter(
-    "yarn",
-    "`resolutions` in package.json",
-    "Classic (v1) and modern (v2+) Yarn differ in selector syntax and lockfile format; behavior must branch on the pinned Yarn version.",
-    [{ files: ["package.json"], pattern: /"resolutions"\s*:/, mechanism: "Yarn `resolutions`", sibling: "yarn.lock" }],
-  ),
-  new PlannedAdapter(
     "uv",
     "`override-dependencies` and `constraint-dependencies` under [tool.uv]",
     "Constraints only narrow what resolution may pick; overrides replace declared requirements. Ordinary constraints are never removed blindly.",

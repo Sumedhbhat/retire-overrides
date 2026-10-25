@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 import { bunHonorsScopedOverrides } from "../../src/adapters/bun/bun.ts";
+import { yarnLine } from "../../src/adapters/yarn/yarn.ts";
 import { type FixtureRepo, fixtureRepo, installedVersion, type Manager } from "../helpers/scenario.ts";
 import { appManifest, GHSA, GHSA_TWO_BRANCH, universe } from "../helpers/universe.ts";
 
 const repos: FixtureRepo[] = [];
 const bunScoped = bunHonorsScopedOverrides(await installedVersion("bun"));
+const yarnClassic = yarnLine(await installedVersion("yarn")) === "classic";
 after(() => Promise.all(repos.map((r) => r.dispose())));
 
 async function repoWith(
@@ -26,7 +28,7 @@ const twoBranches = [
   { id: GHSA_TWO_BRANCH, package: "tar-lite", ranges: [">=2.0.0 <2.4.1", ">=3.0.0 <3.1.4"], published: "2026-02-01T00:00:00Z" },
 ];
 
-for (const manager of ["npm", "pnpm", "bun"] as const) {
+for (const manager of ["npm", "pnpm", "bun", "yarn"] as const) {
   describe(`${manager}: graphs`, () => {
     it("fixes every resolved copy on its own release line when one advisory has several affected branches", async () => {
       const repo = await repoWith(manager, { "package.json": appManifest({ "bundler-kit": "^2.4.0", "legacy-pack": "^1.0.0" }) }, { advisories: twoBranches });
@@ -43,9 +45,15 @@ for (const manager of ["npm", "pnpm", "bun"] as const) {
       assert.equal(vuln.strategy, "override", JSON.stringify(vuln.attempts));
       const change = report.changes.find((c) => c.identity === vuln.change)!;
       // 2.x stays on 2.x (2.4.1), 3.x stays on 3.x (3.2.0): never one blanket version.
-      const json = manager !== "pnpm";
-      assert.match(change.patch, json ? /"legacy-pack": \{\n\+\s+"tar-lite": "2\.4\.1"/ : /legacy-pack>tar-lite: 2\.4\.1/);
-      assert.match(change.patch, json ? /"bundler-kit": \{\n\+\s+"tar-lite": "3\.2\.0"/ : /bundler-kit>tar-lite: 3\.2\.0/);
+      if (manager === "yarn") {
+        const prefix = yarnClassic ? "**/" : "";
+        assert.ok(change.patch.includes(`"${prefix}legacy-pack/tar-lite": "2.4.1"`), change.patch);
+        assert.ok(change.patch.includes(`"${prefix}bundler-kit/tar-lite": "3.2.0"`), change.patch);
+      } else {
+        const json = manager !== "pnpm";
+        assert.match(change.patch, json ? /"legacy-pack": \{\n\+\s+"tar-lite": "2\.4\.1"/ : /legacy-pack>tar-lite: 2\.4\.1/);
+        assert.match(change.patch, json ? /"bundler-kit": \{\n\+\s+"tar-lite": "3\.2\.0"/ : /bundler-kit>tar-lite: 3\.2\.0/);
+      }
       assert.doesNotMatch(change.patch, /4\.0\.0/);
       assert.equal(change.autoMerge, true);
     });
@@ -141,5 +149,43 @@ describe("bun specifics", () => {
       assert.deepEqual(report.overrides.map((o) => o.selector), ["tar-lite"]);
       assert.deepEqual(ignored.sort(), ["$ref", "left-pad@1", "legacy-pack"]);
     }
+  });
+});
+
+describe("yarn specifics", () => {
+  it("reports keys the installed Yarn ignores or rejects, and follows workspace paths", async () => {
+    const repo = await repoWith(
+      "yarn",
+      {
+        "package.json": appManifest({}, { workspaces: ["packages/*"], resolutions: { "tar-lite": "3.1.4" } }),
+        "packages/web/package.json": { name: "web", version: "1.0.0", dependencies: { "bundler-kit": "^2.4.0" } },
+      },
+      {},
+      "2026-02-10T00:00:00Z",
+    );
+    // Added after locking: each line rejects or ignores one of these, which must surface as unsupported.
+    const manifest = await repo.readJson("package.json");
+    manifest.resolutions = { "tar-lite": "3.1.4", "**/legacy-pack/tar-lite": "2.4.1", "left-pad@^1.0.0": "1.3.0", "x/y": "patch:x@1#./p.patch" };
+    await repo.write({ "package.json": manifest });
+    await repo.commit("more resolutions", "2026-02-10T00:00:00Z");
+    let report = await repo.evaluate(universe(), "2026-03-20T00:00:00Z");
+    const ignored = report.unsupported.filter((u) => u.ecosystem === "yarn").map((u) => u.selector).sort();
+    if (yarnClassic) {
+      assert.deepEqual(ignored, ["left-pad@^1.0.0", "x/y"]);
+      // Classic aborts the whole install on a version-selected key: blocked, with Yarn's own error.
+      const blocked = report.overrides.find((o) => o.selector === "tar-lite")!;
+      assert.equal(blocked.status, "BLOCKED");
+      assert.match(blocked.reasons[0]!.message, /left-pad/);
+      delete (manifest.resolutions as Record<string, string>)["left-pad@^1.0.0"];
+      await repo.write({ "package.json": manifest });
+      await repo.commit("drop the key Classic rejects", "2026-02-11T00:00:00Z");
+      report = await repo.evaluate(universe(), "2026-03-20T00:00:00Z");
+    } else {
+      assert.deepEqual(ignored, ["**/legacy-pack/tar-lite", "x/y"]);
+    }
+    const global = report.overrides.find((o) => o.selector === "tar-lite");
+    assert.ok(global, JSON.stringify(report.overrides.map((o) => [o.selector, o.status, o.reasons])));
+    const paths = global.evidence.instancesWithoutOverride?.flatMap((i) => i.paths) ?? [];
+    assert.ok(paths.includes("packages/web > bundler-kit@2.4.0 > tar-lite@3.0.5"), JSON.stringify(global));
   });
 });

@@ -79,7 +79,8 @@ describe("CLI", () => {
     assert.match(await readFile(md, "utf8"), /\| REMOVABLE \| `bundler-kit > tar-lite` → `3\.1\.4` \|/);
     const adapters = await cli(["adapters"]);
     assert.match(adapters.stdout, /^npm\s+implemented/m);
-    assert.match(adapters.stdout, /^yarn\s+planned/m);
+    assert.match(adapters.stdout, /^yarn\s+implemented/m);
+    assert.match(adapters.stdout, /^uv\s+planned/m);
   });
 
   it("rejects publishing a replay and bad options with exit code 2", async () => {
