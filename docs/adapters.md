@@ -30,7 +30,7 @@ Resolution: `npm install --package-lock-only --ignore-scripts --no-audit --no-fu
 
 Semantics: `parent>pkg` applies only when `parent` is the **immediate** parent. Edits to pnpm-workspace.yaml keep comments and other settings, and an emptied file is deleted.
 
-Resolution: `pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile`, then `pnpm update --recursive --depth Infinity --no-save --lockfile-only <pkgs>`.
+Resolution: `pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile`, then `pnpm update --depth Infinity --no-save --lockfile-only <pkgs>`, adding `--recursive` only for workspaces (pnpm 10 silently updates nothing when `--recursive` is passed outside one).
 
 ### Both
 

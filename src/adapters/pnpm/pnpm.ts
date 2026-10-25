@@ -236,7 +236,10 @@ export class PnpmAdapter implements ImplementedAdapter {
       await run("pnpm", ["install", "--no-frozen-lockfile", ...common], { cwd, env });
       if (options.refresh.length > 0) {
         // `update` without --latest stays inside declared ranges; --no-save keeps manifests untouched.
-        await run("pnpm", ["update", "--recursive", "--depth", "Infinity", "--no-save", ...common, ...options.refresh], { cwd, env });
+        // --recursive is needed to reach workspace importers, but pnpm 10 silently updates nothing
+        // when it is passed outside a workspace, so it is only added for multi-importer lockfiles.
+        const recursive = (await importerCount(join(dir, project.lockfile))) > 1 ? ["--recursive"] : [];
+        await run("pnpm", ["update", ...recursive, "--depth", "Infinity", "--no-save", ...common, ...options.refresh], { cwd, env });
       }
     } finally {
       if (store) await rm(store, { recursive: true, force: true });
@@ -341,6 +344,11 @@ async function readOverridesAt(path: string, location: Location): Promise<Record
   }
   const data = parseYaml(text) as unknown;
   return isRecord(data) && isRecord(data.overrides) ? data.overrides : undefined;
+}
+
+async function importerCount(lockfile: string): Promise<number> {
+  const lock = parseYaml(await readFile(lockfile, "utf8")) as unknown;
+  return isRecord(lock) && isRecord(lock.importers) ? Object.keys(lock.importers).length : 1;
 }
 
 async function exists(path: string): Promise<boolean> {

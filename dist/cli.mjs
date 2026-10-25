@@ -10187,7 +10187,8 @@ var PnpmAdapter = class {
     try {
       await run("pnpm", ["install", "--no-frozen-lockfile", ...common], { cwd, env });
       if (options.refresh.length > 0) {
-        await run("pnpm", ["update", "--recursive", "--depth", "Infinity", "--no-save", ...common, ...options.refresh], { cwd, env });
+        const recursive = await importerCount(join4(dir, project.lockfile)) > 1 ? ["--recursive"] : [];
+        await run("pnpm", ["update", ...recursive, "--depth", "Infinity", "--no-save", ...common, ...options.refresh], { cwd, env });
       }
     } finally {
       if (store) await rm2(store, { recursive: true, force: true });
@@ -10284,6 +10285,10 @@ async function readOverridesAt(path, location) {
   }
   const data = (0, import_yaml.parse)(text);
   return isRecord(data) && isRecord(data.overrides) ? data.overrides : void 0;
+}
+async function importerCount(lockfile) {
+  const lock = (0, import_yaml.parse)(await readFile4(lockfile, "utf8"));
+  return isRecord(lock) && isRecord(lock.importers) ? Object.keys(lock.importers).length : 1;
 }
 async function exists(path) {
   try {
