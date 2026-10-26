@@ -70,7 +70,7 @@ export class EngineContext {
     if (cached === undefined) {
       cached = (async () => {
         const meta = await this.package(name);
-        const answer = await this.options.advisories.advisoriesFor(ecosystem, new Map([[name, Object.keys(meta.versions)]]));
+        const answer = await this.options.advisories.advisoriesFor(ecosystem, new Map([[name, Object.keys(meta.versions)]]), { allVersions: true });
         return answer.get(name) ?? [];
       })();
       this.allAdvisoriesCache.set(key, cached);

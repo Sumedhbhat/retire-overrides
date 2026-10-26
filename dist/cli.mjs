@@ -10855,12 +10855,12 @@ var CombinedAdvisoryProvider = class {
   supports(ecosystem) {
     return this.providers.some((p) => p.supports(ecosystem));
   }
-  async advisoriesFor(ecosystem, versions) {
+  async advisoriesFor(ecosystem, versions, options) {
     const applicable = this.providers.filter((p) => p.supports(ecosystem));
     if (applicable.length === 0) {
       throw new AdvisoryDataUnavailableError(this.id, `no configured provider covers ${ecosystem}`);
     }
-    const answers = await Promise.all(applicable.map((p) => p.advisoriesFor(ecosystem, versions)));
+    const answers = await Promise.all(applicable.map((p) => p.advisoriesFor(ecosystem, versions, options)));
     const merged = /* @__PURE__ */ new Map();
     for (const name of versions.keys()) {
       const byId = /* @__PURE__ */ new Map();
@@ -10913,13 +10913,14 @@ var OsvAdvisoryProvider = class {
   supports(ecosystem) {
     return OSV_ECOSYSTEM[ecosystem] !== void 0;
   }
-  async advisoriesFor(ecosystem, versions) {
+  async advisoriesFor(ecosystem, versions, options = {}) {
     const osvEcosystem = OSV_ECOSYSTEM[ecosystem];
     if (!osvEcosystem) throw new AdvisoryDataUnavailableError(this.id, `OSV does not cover ${ecosystem}`);
     const scheme = schemeFor(ecosystem);
     const result = /* @__PURE__ */ new Map();
-    const small = [...versions].filter(([, v]) => v.length <= BATCH_VERSION_LIMIT);
-    const large = [...versions].filter(([, v]) => v.length > BATCH_VERSION_LIMIT);
+    const wide = (v) => options.allVersions === true || v.length > BATCH_VERSION_LIMIT;
+    const small = [...versions].filter(([, v]) => !wide(v));
+    const large = [...versions].filter(([, v]) => wide(v));
     const ids = /* @__PURE__ */ new Map();
     const queries = small.flatMap(([name, list]) => list.map((version) => ({ name, version })));
     for (let i = 0; i < queries.length; i += 1e3) {
@@ -10970,10 +10971,9 @@ var OsvAdvisoryProvider = class {
         if (affected.package?.ecosystem !== ecosystem || !sameName(affected.package.name, name, ecosystem)) continue;
         const usable = (affected.ranges ?? []).filter((r) => r.type === "SEMVER" || r.type === "ECOSYSTEM");
         for (const r of usable) ranges.push(...eventsToRanges(r.events, scheme));
-        if (usable.length === 0) {
-          if (affected.versions && affected.versions.length > 0) ranges.push(...affected.versions.map((v) => scheme.exact(v)));
-          else unusable = true;
-        }
+        const listed = affected.versions ?? [];
+        ranges.push(...listed.map((v) => scheme.exact(v)));
+        if (usable.length === 0 && listed.length === 0) unusable = true;
       }
       if (unusable && ranges.length === 0) {
         throw new AdvisoryDataUnavailableError(this.id, `${vuln.id} gives no registry version ranges for ${name}`);
@@ -11433,7 +11433,7 @@ var EngineContext = class {
     if (cached === void 0) {
       cached = (async () => {
         const meta = await this.package(name);
-        const answer = await this.options.advisories.advisoriesFor(ecosystem, /* @__PURE__ */ new Map([[name, Object.keys(meta.versions)]]));
+        const answer = await this.options.advisories.advisoriesFor(ecosystem, /* @__PURE__ */ new Map([[name, Object.keys(meta.versions)]]), { allVersions: true });
         return answer.get(name) ?? [];
       })();
       this.allAdvisoriesCache.set(key, cached);

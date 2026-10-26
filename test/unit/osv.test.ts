@@ -56,13 +56,25 @@ describe("OSV", () => {
     assert.deepEqual(list.map((a) => a.id), ["GHSA-jf85-cpcp-j695"]);
   });
 
-  it("uses one package-wide query when asked about every version", async () => {
+  it("uses one package-wide query when asked about every version, however few", async () => {
     const calls: string[] = [];
     const provider = new OsvAdvisoryProvider({ fetch: fakeOsv([vuln("GHSA-aaaa-bbbb-cccc")], calls) });
-    const versions = Array.from({ length: 80 }, (_, i) => `3.0.${i}`);
-    const result = await provider.advisoriesFor("pnpm", new Map([["tar-lite", versions]]));
+    const result = await provider.advisoriesFor("pnpm", new Map([["tar-lite", ["3.0.0", "3.0.5"]]]), { allVersions: true });
     assert.equal(result.get("tar-lite")!.length, 1);
     assert.deepEqual(calls, ["/v1/query"]);
+    calls.length = 0;
+    const many = Array.from({ length: 80 }, (_, i) => `3.0.${i}`);
+    await provider.advisoriesFor("pnpm", new Map([["tar-lite", many]]));
+    assert.deepEqual(calls, ["/v1/query"]);
+  });
+
+  it("treats explicitly listed versions as affected alongside ranges", async () => {
+    const record = vuln("GHSA-aaaa-bbbb-cccc", {
+      affected: [{ package: { ecosystem: "npm", name: "tar-lite" }, ranges: [{ type: "SEMVER", events: [{ introduced: "1.0.0" }, { fixed: "2.0.0" }] }], versions: ["3.0.0"] }],
+    });
+    const provider = new OsvAdvisoryProvider({ fetch: fakeOsv([record]) });
+    const [a] = (await provider.advisoriesFor("npm", new Map([["tar-lite", ["3.0.0"]]]))).get("tar-lite")!;
+    assert.deepEqual(a!.ranges, [">=1.0.0 <2.0.0", "3.0.0"]);
   });
 
   it("skips withdrawn records and refuses records with only git ranges", async () => {

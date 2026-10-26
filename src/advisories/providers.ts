@@ -16,7 +16,12 @@ export class AdvisoryDataUnavailableError extends Error {
 export interface AdvisoryProvider {
   readonly id: string;
   supports(ecosystem: EcosystemId): boolean;
-  advisoriesFor(ecosystem: EcosystemId, versions: Map<string, string[]>): Promise<Map<string, Advisory[]>>;
+  advisoriesFor(ecosystem: EcosystemId, versions: Map<string, string[]>, options?: AdvisoryQueryOptions): Promise<Map<string, Advisory[]>>;
+}
+
+export interface AdvisoryQueryOptions {
+  /** The versions are every published version: return every advisory for the package. */
+  allVersions?: boolean;
 }
 
 const GHSA = /GHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}/i;
@@ -229,12 +234,16 @@ export class CombinedAdvisoryProvider implements AdvisoryProvider {
     return this.providers.some((p) => p.supports(ecosystem));
   }
 
-  async advisoriesFor(ecosystem: EcosystemId, versions: Map<string, string[]>): Promise<Map<string, Advisory[]>> {
+  async advisoriesFor(
+    ecosystem: EcosystemId,
+    versions: Map<string, string[]>,
+    options?: AdvisoryQueryOptions,
+  ): Promise<Map<string, Advisory[]>> {
     const applicable = this.providers.filter((p) => p.supports(ecosystem));
     if (applicable.length === 0) {
       throw new AdvisoryDataUnavailableError(this.id, `no configured provider covers ${ecosystem}`);
     }
-    const answers = await Promise.all(applicable.map((p) => p.advisoriesFor(ecosystem, versions)));
+    const answers = await Promise.all(applicable.map((p) => p.advisoriesFor(ecosystem, versions, options)));
     const merged = new Map<string, Advisory[]>();
     for (const name of versions.keys()) {
       const byId = new Map<string, Advisory>();

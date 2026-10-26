@@ -3,7 +3,7 @@ import type { FetchLike } from "../registry/registry.ts";
 import { schemeFor, type VersionScheme } from "../schemes.ts";
 import type { Advisory, EcosystemId } from "../types.ts";
 import { isAffectedBy } from "../versions.ts";
-import { AdvisoryDataUnavailableError, type AdvisoryProvider, mergeById } from "./providers.ts";
+import { AdvisoryDataUnavailableError, type AdvisoryProvider, type AdvisoryQueryOptions, mergeById } from "./providers.ts";
 
 /** OSV's name for each ecosystem's package registry. */
 const OSV_ECOSYSTEM: Partial<Record<EcosystemId, string>> = {
@@ -60,14 +60,20 @@ export class OsvAdvisoryProvider implements AdvisoryProvider {
     return OSV_ECOSYSTEM[ecosystem] !== undefined;
   }
 
-  async advisoriesFor(ecosystem: EcosystemId, versions: Map<string, string[]>): Promise<Map<string, Advisory[]>> {
+  async advisoriesFor(
+    ecosystem: EcosystemId,
+    versions: Map<string, string[]>,
+    options: AdvisoryQueryOptions = {},
+  ): Promise<Map<string, Advisory[]>> {
     const osvEcosystem = OSV_ECOSYSTEM[ecosystem];
     if (!osvEcosystem) throw new AdvisoryDataUnavailableError(this.id, `OSV does not cover ${ecosystem}`);
     const scheme = schemeFor(ecosystem);
     const result = new Map<string, Advisory[]>();
 
-    const small = [...versions].filter(([, v]) => v.length <= BATCH_VERSION_LIMIT);
-    const large = [...versions].filter(([, v]) => v.length > BATCH_VERSION_LIMIT);
+    // Package-wide when the caller needs every version, or when per-version queries would be many.
+    const wide = (v: string[]) => options.allVersions === true || v.length > BATCH_VERSION_LIMIT;
+    const small = [...versions].filter(([, v]) => !wide(v));
+    const large = [...versions].filter(([, v]) => wide(v));
 
     // Batch path: which vulnerabilities affect these exact versions, then fetch each record once.
     const ids = new Map<string, Set<string>>();
@@ -125,10 +131,10 @@ export class OsvAdvisoryProvider implements AdvisoryProvider {
         if (affected.package?.ecosystem !== ecosystem || !sameName(affected.package.name, name, ecosystem)) continue;
         const usable = (affected.ranges ?? []).filter((r) => r.type === "SEMVER" || r.type === "ECOSYSTEM");
         for (const r of usable) ranges.push(...eventsToRanges(r.events, scheme));
-        if (usable.length === 0) {
-          if (affected.versions && affected.versions.length > 0) ranges.push(...affected.versions.map((v) => scheme.exact(v)));
-          else unusable = true;
-        }
+        // OSV defines the affected set as the union of the ranges and the listed versions.
+        const listed = affected.versions ?? [];
+        ranges.push(...listed.map((v) => scheme.exact(v)));
+        if (usable.length === 0 && listed.length === 0) unusable = true;
       }
       if (unusable && ranges.length === 0) {
         // Only git ranges: the affected registry versions are unknown. Refuse to guess "not affected".
