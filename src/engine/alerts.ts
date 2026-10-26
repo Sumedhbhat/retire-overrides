@@ -69,15 +69,37 @@ export function alertRef(a: HostAlert): AlertRef {
   return { number: a.number, url: a.url, advisory: a.advisory };
 }
 
-/** Project directory an alert's manifest path belongs to (`""` for the root). */
+/** Directory of an alert's manifest path (`""` for the root). */
 function alertDir(manifest: string): string {
   const dir = posix.dirname(manifest);
   return dir === "." ? "" : dir;
 }
 
-/** Open alerts for this package and advisory set in this project. */
+/** Whether a manifest belongs to a project: its own directory or a workspace member below it. */
+function inProject(manifest: string, projectDir: string): boolean {
+  const dir = alertDir(manifest);
+  return projectDir === "" || dir === projectDir || dir.startsWith(`${projectDir}/`);
+}
+
+/** Package names as the host and the adapters write them can differ in case and separators (PEP 503). */
+function samePackage(hostEcosystem: string, a: string, b: string): boolean {
+  if (hostEcosystem !== "pip") return a === b;
+  const norm = (n: string) => n.toLowerCase().replace(/[-_.]+/g, "-");
+  return norm(a) === norm(b);
+}
+
+/** The project that owns an alert: the deepest one containing its manifest. */
+function owningProject<P extends { ecosystem: EcosystemId; dir: string }>(alert: HostAlert, projects: P[]): P | undefined {
+  const owners = HOST_ECOSYSTEMS[alert.hostEcosystem] ?? [];
+  return projects
+    .filter((p) => owners.includes(p.ecosystem) && inProject(alert.manifest, p.dir))
+    .sort((x, y) => y.dir.length - x.dir.length)[0];
+}
+
+/** Open alerts for this package and advisory set that belong to this project (and not a deeper one). */
 export function alertsFor(
   alerts: HostAlert[],
+  projects: Array<{ ecosystem: EcosystemId; dir: string }>,
   ecosystem: EcosystemId,
   projectDir: string,
   pkg: string,
@@ -87,8 +109,8 @@ export function alertsFor(
   return alerts.filter(
     (a) =>
       (HOST_ECOSYSTEMS[a.hostEcosystem] ?? []).includes(ecosystem) &&
-      alertDir(a.manifest) === projectDir &&
-      a.package === pkg &&
+      owningProject(a, projects.some((p) => p.ecosystem === ecosystem && p.dir === projectDir) ? projects : [...projects, { ecosystem, dir: projectDir }])?.dir === projectDir &&
+      samePackage(a.hostEcosystem, a.package, pkg) &&
       ids.has(a.advisory.toLowerCase()),
   );
 }
@@ -110,7 +132,7 @@ export function coverage(alerts: HostAlert[], projects: EvaluatedProject[], vuln
   const referenced = new Set<number>();
   for (const v of vulnerabilities) {
     const ids = [...v.advisories.map((a) => a.id), ...v.instances.flatMap((i) => i.affectedBy)];
-    const matched = alertsFor(alerts, v.ecosystem, v.project, v.package, ids);
+    const matched = alertsFor(alerts, projects, v.ecosystem, v.project, v.package, ids);
     if (matched.length > 0 && !v.alerts) v.alerts = matched.map(alertRef).sort((x, y) => x.number - y.number);
     for (const a of matched) referenced.add(a.number);
   }
@@ -123,14 +145,15 @@ export function coverage(alerts: HostAlert[], projects: EvaluatedProject[], vuln
       manifest: alert.manifest,
       ...(alert.vulnerableRange ? { vulnerableRange: alert.vulnerableRange } : {}),
     };
-    const owners = HOST_ECOSYSTEMS[alert.hostEcosystem] ?? [];
-    const project = projects.find((p) => owners.includes(p.ecosystem) && p.dir === alertDir(alert.manifest));
+    const project = owningProject(alert, projects);
     if (!project) {
       out.push({ alert: ref, reason: "unsupported-ecosystem", message: `no implemented ${alert.hostEcosystem} project at ${alert.manifest}; this alert was not evaluated` });
     } else if (project.blocked || !project.graph) {
       out.push({ alert: ref, reason: "project-blocked", message: `the ${project.ecosystem} project at ${project.dir || "(root)"} could not be evaluated; see its blockers` });
     } else {
-      const versions = [...project.graph.nodes.values()].filter((n) => n.name === alert.package && n.importer === undefined).map((n) => n.version);
+      const versions = [...project.graph.nodes.values()]
+        .filter((n) => samePackage(alert.hostEcosystem, n.name, alert.package) && n.importer === undefined)
+        .map((n) => n.version);
       if (versions.length === 0) {
         out.push({ alert: ref, reason: "not-in-graph", message: `${alert.package} is not in the resolved lockfile; the alert may be stale until the host rescans` });
       } else {

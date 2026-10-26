@@ -106,7 +106,7 @@ async function planGroup(
   }
   report.advisories = advisoryRefs(advisories.filter((a) => advisoryIds.includes(a.id)));
   if (ctx.options.alerts?.status === "available") {
-    const matched = alertsFor(ctx.options.alerts.alerts, project.ecosystem, project.dir, group.name, advisoryIds);
+    const matched = alertsFor(ctx.options.alerts.alerts, ctx.projects, project.ecosystem, project.dir, group.name, advisoryIds);
     if (matched.length > 0) report.alerts = matched.map(alertRef).sort((a, b) => a.number - b.number);
   }
 

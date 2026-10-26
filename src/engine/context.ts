@@ -44,6 +44,8 @@ export interface Finding {
 
 export class EngineContext {
   readonly options: EngineOptions;
+  /** Every project this run evaluates, known before evaluation starts. */
+  projects: Array<{ ecosystem: EcosystemId; dir: string }> = [];
   private readonly allAdvisoriesCache = new Map<string, Promise<Advisory[]>>();
 
   constructor(options: EngineOptions) {

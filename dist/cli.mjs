@@ -11410,6 +11410,8 @@ function declaredRangeIn(meta, dep) {
 // src/engine/context.ts
 var EngineContext = class {
   options;
+  /** Every project this run evaluates, known before evaluation starts. */
+  projects = [];
   allAdvisoriesCache = /* @__PURE__ */ new Map();
   constructor(options) {
     this.options = options;
@@ -11507,17 +11509,30 @@ function alertDir(manifest) {
   const dir = posix5.dirname(manifest);
   return dir === "." ? "" : dir;
 }
-function alertsFor(alerts, ecosystem, projectDir, pkg, advisories) {
+function inProject(manifest, projectDir) {
+  const dir = alertDir(manifest);
+  return projectDir === "" || dir === projectDir || dir.startsWith(`${projectDir}/`);
+}
+function samePackage(hostEcosystem, a, b) {
+  if (hostEcosystem !== "pip") return a === b;
+  const norm = (n) => n.toLowerCase().replace(/[-_.]+/g, "-");
+  return norm(a) === norm(b);
+}
+function owningProject(alert, projects) {
+  const owners = HOST_ECOSYSTEMS[alert.hostEcosystem] ?? [];
+  return projects.filter((p) => owners.includes(p.ecosystem) && inProject(alert.manifest, p.dir)).sort((x, y) => y.dir.length - x.dir.length)[0];
+}
+function alertsFor(alerts, projects, ecosystem, projectDir, pkg, advisories) {
   const ids = new Set(advisories.map((a) => a.toLowerCase()));
   return alerts.filter(
-    (a) => (HOST_ECOSYSTEMS[a.hostEcosystem] ?? []).includes(ecosystem) && alertDir(a.manifest) === projectDir && a.package === pkg && ids.has(a.advisory.toLowerCase())
+    (a) => (HOST_ECOSYSTEMS[a.hostEcosystem] ?? []).includes(ecosystem) && owningProject(a, projects.some((p) => p.ecosystem === ecosystem && p.dir === projectDir) ? projects : [...projects, { ecosystem, dir: projectDir }])?.dir === projectDir && samePackage(a.hostEcosystem, a.package, pkg) && ids.has(a.advisory.toLowerCase())
   );
 }
 function coverage(alerts, projects, vulnerabilities) {
   const referenced = /* @__PURE__ */ new Set();
   for (const v of vulnerabilities) {
     const ids = [...v.advisories.map((a) => a.id), ...v.instances.flatMap((i) => i.affectedBy)];
-    const matched = alertsFor(alerts, v.ecosystem, v.project, v.package, ids);
+    const matched = alertsFor(alerts, projects, v.ecosystem, v.project, v.package, ids);
     if (matched.length > 0 && !v.alerts) v.alerts = matched.map(alertRef).sort((x, y) => x.number - y.number);
     for (const a of matched) referenced.add(a.number);
   }
@@ -11530,14 +11545,13 @@ function coverage(alerts, projects, vulnerabilities) {
       manifest: alert.manifest,
       ...alert.vulnerableRange ? { vulnerableRange: alert.vulnerableRange } : {}
     };
-    const owners = HOST_ECOSYSTEMS[alert.hostEcosystem] ?? [];
-    const project = projects.find((p) => owners.includes(p.ecosystem) && p.dir === alertDir(alert.manifest));
+    const project = owningProject(alert, projects);
     if (!project) {
       out.push({ alert: ref, reason: "unsupported-ecosystem", message: `no implemented ${alert.hostEcosystem} project at ${alert.manifest}; this alert was not evaluated` });
     } else if (project.blocked || !project.graph) {
       out.push({ alert: ref, reason: "project-blocked", message: `the ${project.ecosystem} project at ${project.dir || "(root)"} could not be evaluated; see its blockers` });
     } else {
-      const versions = [...project.graph.nodes.values()].filter((n) => n.name === alert.package && n.importer === void 0).map((n) => n.version);
+      const versions = [...project.graph.nodes.values()].filter((n) => samePackage(alert.hostEcosystem, n.name, alert.package) && n.importer === void 0).map((n) => n.version);
       if (versions.length === 0) {
         out.push({ alert: ref, reason: "not-in-graph", message: `${alert.package} is not in the resolved lockfile; the alert may be stale until the host rescans` });
       } else {
@@ -12130,7 +12144,7 @@ async function planGroup(ctx, adapter, project, locked, lockedFindings, base, en
   }
   report.advisories = advisoryRefs(advisories.filter((a) => advisoryIds.includes(a.id)));
   if (ctx.options.alerts?.status === "available") {
-    const matched = alertsFor(ctx.options.alerts.alerts, project.ecosystem, project.dir, group.name, advisoryIds);
+    const matched = alertsFor(ctx.options.alerts.alerts, ctx.projects, project.ecosystem, project.dir, group.name, advisoryIds);
     if (matched.length > 0) report.alerts = matched.map(alertRef).sort((a, b) => a.number - b.number);
   }
   const deferral = matchExternal(ctx.options.externalChanges ?? [], group.name);
@@ -12520,9 +12534,13 @@ async function evaluate(options) {
   const evaluated = [];
   const base = await createScratch(options.repo, options.commit);
   try {
+    const detections = [];
     for (const adapter of options.adapters) {
       if (options.config.ecosystems && !options.config.ecosystems.includes(adapter.id)) continue;
-      const detected = await adapter.detect(base.dir);
+      detections.push({ adapter, detected: await adapter.detect(base.dir) });
+    }
+    ctx.projects = detections.filter((d) => isImplemented(d.adapter)).flatMap((d) => d.detected.projects.map((p) => ({ ecosystem: p.ecosystem, dir: p.dir })));
+    for (const { adapter, detected } of detections) {
       report.unsupported.push(...detected.unsupported);
       if (!isImplemented(adapter)) continue;
       for (const project of detected.projects) {

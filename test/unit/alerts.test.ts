@@ -60,8 +60,22 @@ describe("GitHub Dependabot alerts", () => {
 describe("alert coverage", () => {
   it("matches alerts by ecosystem family, project directory, package and advisory", () => {
     const alerts = [alert(1, "tar-lite"), alert(2, "tar-lite", { manifest: "packages/web/package-lock.json" }), alert(3, "tar-lite", { advisory: "GHSA-other" })];
-    assert.deepEqual(alertsFor(alerts, "pnpm", "", "tar-lite", ["ghsa-2222-3333-4444"]).map((a) => a.number), [1]);
-    assert.deepEqual(alertsFor(alerts, "npm", "packages/web", "tar-lite", ["GHSA-2222-3333-4444"]).map((a) => a.number), [2]);
+    const projects = [{ ecosystem: "npm" as const, dir: "" }, { ecosystem: "npm" as const, dir: "packages/web" }];
+    assert.deepEqual(alertsFor(alerts, projects, "npm", "", "tar-lite", ["ghsa-2222-3333-4444"]).map((a) => a.number), [1]);
+    assert.deepEqual(alertsFor(alerts, projects, "npm", "packages/web", "tar-lite", ["GHSA-2222-3333-4444"]).map((a) => a.number), [2]);
+  });
+
+  it("attributes a workspace member's alert to the workspace root that owns its lockfile", () => {
+    const alerts = [alert(1, "tar-lite", { manifest: "packages/web/package.json" })];
+    assert.deepEqual(alertsFor(alerts, [{ ecosystem: "npm", dir: "" }], "npm", "", "tar-lite", ["GHSA-2222-3333-4444"]).map((a) => a.number), [1]);
+  });
+
+  it("matches Python package names after PEP 503 normalization", () => {
+    const alerts = [alert(1, "Jinja2", { hostEcosystem: "pip", manifest: "uv.lock" }), alert(2, "Tar_Lite", { hostEcosystem: "pip", manifest: "uv.lock" })];
+    assert.deepEqual(alertsFor(alerts, [{ ecosystem: "uv", dir: "" }], "uv", "", "tar-lite", ["GHSA-2222-3333-4444"]).map((a) => a.number), [2]);
+    assert.deepEqual(alertsFor(alerts, [{ ecosystem: "uv", dir: "" }], "uv", "", "jinja2", ["GHSA-2222-3333-4444"]).map((a) => a.number), [1]);
+    // npm names are case-sensitive and stay exact.
+    assert.deepEqual(alertsFor([alert(3, "Tar-Lite")], [{ ecosystem: "npm", dir: "" }], "npm", "", "tar-lite", ["GHSA-2222-3333-4444"]), []);
   });
 
   it("accounts for every alert: linked to a vulnerability or explained", () => {

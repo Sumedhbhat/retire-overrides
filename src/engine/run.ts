@@ -54,9 +54,14 @@ export async function evaluate(options: EvaluateOptions): Promise<Report> {
   const evaluated: Array<{ ecosystem: EcosystemId; dir: string; blockers: string[]; graph?: ResolvedGraph }> = [];
   const base = await createScratch(options.repo, options.commit);
   try {
+    // Detect every project first, so alerts can be attributed to the deepest project that owns them.
+    const detections: Array<{ adapter: (typeof options.adapters)[number]; detected: Awaited<ReturnType<(typeof options.adapters)[number]["detect"]>> }> = [];
     for (const adapter of options.adapters) {
       if (options.config.ecosystems && !options.config.ecosystems.includes(adapter.id)) continue;
-      const detected = await adapter.detect(base.dir);
+      detections.push({ adapter, detected: await adapter.detect(base.dir) });
+    }
+    ctx.projects = detections.filter((d) => isImplemented(d.adapter)).flatMap((d) => d.detected.projects.map((p) => ({ ecosystem: p.ecosystem, dir: p.dir })));
+    for (const { adapter, detected } of detections) {
       report.unsupported.push(...detected.unsupported);
       if (!isImplemented(adapter)) continue;
 
