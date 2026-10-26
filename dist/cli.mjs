@@ -10775,6 +10775,10 @@ var YarnAdapter = class {
         report(key, "Yarn 2+ silently ignores `**` globs and paths deeper than parent/package");
         continue;
       }
+      if (line === "berry" && segments.some((s) => s.range !== void 0)) {
+        report(key, "Yarn 2+ applies `pkg@descriptor` keys only where that exact range is requested; these keys are not evaluated yet");
+        continue;
+      }
       if (registryRange(value) === null) {
         report(key, `resolution value "${value}" is not a registry version range (patch:, portal:, link:, file:, git and alias values are not evaluated)`);
         continue;
@@ -11056,7 +11060,6 @@ function berryGraph(lock, resolutions) {
       }
       return true;
     });
-    applicable.sort((a, b) => b.key.segments.length - a.key.segments.length || Number(b.key.segments.at(-1).range !== void 0) - Number(a.key.segments.at(-1).range !== void 0));
     const rule = applicable[0];
     if (!rule) return void 0;
     return rule.value.includes(":") ? rule.value : `npm:${rule.value}`;

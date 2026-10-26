@@ -17,7 +17,7 @@ It ships as three things that share one engine:
 | npm | **Implemented** | `overrides` in the root package.json: global, nested/parent-scoped, version-selected keys, `.` entries, `$name` references |
 | pnpm | **Implemented** | `overrides` in pnpm-workspace.yaml (pnpm 10+) or `pnpm.overrides` in package.json (pnpm ≤ 10), chosen by the pinned pnpm version |
 | Bun | **Implemented** | `overrides`/`resolutions` in package.json with bun.lock. Bun 1.4+ honors parent-scoped and version-selected keys; Bun 1.3 honors only global keys |
-| Yarn | **Implemented** | `resolutions` in package.json with yarn.lock. Classic (1.x) matches keys as whole-path globs; Yarn 2+ honors only `pkg`, `pkg@range` and `parent/pkg` |
+| Yarn | **Implemented** | `resolutions` in package.json with yarn.lock. Classic (1.x) matches keys as whole-path globs; Yarn 2+ honors `pkg` and `parent/pkg` (descriptor keys such as `pkg@range` are reported, not evaluated) |
 | Python / uv | Planned | `override-dependencies`, `constraint-dependencies` |
 | Rust / Cargo | Planned | `[patch]`, `[replace]` |
 | Go | Planned | `replace`, raised `require` |

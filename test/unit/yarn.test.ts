@@ -88,6 +88,25 @@ describe("yarn lockfiles", () => {
   });
 });
 
+describe("yarn resolution precedence", () => {
+  it("applies the first matching Berry resolution in manifest order, as Yarn does", async () => {
+    // Verified with Yarn 3.6.4: a global rule listed first wins over a later parent-scoped one.
+    const dir = await tempDir({
+      "package.json": JSON.stringify({ name: "app", dependencies: { kit: "2.4.0", legacy: "^1.0.0" }, resolutions: { "tar-lite": "3.1.4", "kit/tar-lite": "9.9.9" } }),
+      "yarn.lock": [
+        "__metadata:\n  version: 10\n",
+        '"app@workspace:.":\n  version: 0.0.0-use.local\n  resolution: "app@workspace:."\n  dependencies:\n    kit: "npm:2.4.0"\n    legacy: "npm:^1.0.0"\n',
+        '"kit@npm:2.4.0":\n  version: 2.4.0\n  resolution: "kit@npm:2.4.0"\n  dependencies:\n    tar-lite: "npm:~3.0.0"\n',
+        '"legacy@npm:^1.0.0":\n  version: 1.0.0\n  resolution: "legacy@npm:1.0.0"\n  dependencies:\n    tar-lite: "npm:^2.0.0"\n',
+        '"tar-lite@npm:3.1.4":\n  version: 3.1.4\n  resolution: "tar-lite@npm:3.1.4"\n',
+        '"tar-lite@npm:^2.0.0":\n  version: 2.4.1\n  resolution: "tar-lite@npm:2.4.1"\n',
+      ].join("\n"),
+    });
+    const graph = await new YarnAdapter().readGraph(project("4.18.1"), dir);
+    assert.equal(graph.nodes.get("kit@npm:2.4.0")!.children.get("tar-lite"), "tar-lite@npm:3.1.4");
+  });
+});
+
 describe("yarn resolutions", () => {
   it("distinguishes Classic and Berry by version", () => {
     assert.equal(yarnLine("1.22.22"), "classic");
@@ -108,7 +127,7 @@ describe("yarn resolutions", () => {
     const resolutions = { "tar-lite": "3.1.4", "**/a/tar-lite": "3.1.4", "a/b/tar-lite": "3.1.4", "tar-lite@~3.0.0": "3.1.4", "x": "patch:x@1#./p.patch" };
     for (const [version, entries, ignored] of [
       ["1.22.22", ["tar-lite", "**/a/tar-lite", "a/b/tar-lite"], ["tar-lite@~3.0.0", "x"]],
-      ["4.18.1", ["tar-lite", "tar-lite@~3.0.0"], ["**/a/tar-lite", "a/b/tar-lite", "x"]],
+      ["4.18.1", ["tar-lite"], ["**/a/tar-lite", "a/b/tar-lite", "tar-lite@~3.0.0", "x"]],
     ] as const) {
       const dir = await tempDir({ "package.json": JSON.stringify({ name: "app", resolutions }) });
       const adapter = new YarnAdapter();

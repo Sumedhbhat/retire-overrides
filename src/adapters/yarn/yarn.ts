@@ -146,6 +146,11 @@ export class YarnAdapter implements ImplementedAdapter {
         report(key, "Yarn 2+ silently ignores `**` globs and paths deeper than parent/package");
         continue;
       }
+      if (line === "berry" && segments.some((s) => s.range !== undefined)) {
+        // It applies only where the requested range matches, which dependency paths don't record.
+        report(key, "Yarn 2+ applies `pkg@descriptor` keys only where that exact range is requested; these keys are not evaluated yet");
+        continue;
+      }
       if (registryRange(value) === null) {
         report(key, `resolution value "${value}" is not a registry version range (patch:, portal:, link:, file:, git and alias values are not evaluated)`);
         continue;
@@ -465,7 +470,7 @@ function berryGraph(lock: Record<string, unknown>, resolutions: Record<string, s
       }
       return true;
     });
-    applicable.sort((a, b) => b.key.segments.length - a.key.segments.length || Number(b.key.segments.at(-1)!.range !== undefined) - Number(a.key.segments.at(-1)!.range !== undefined));
+    // Yarn 2+ applies the first matching resolution in manifest order, not the most specific one.
     const rule = applicable[0];
     if (!rule) return undefined;
     return rule.value.includes(":") ? rule.value : `npm:${rule.value}`;

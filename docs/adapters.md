@@ -57,7 +57,7 @@ The line is chosen from the pinned version (`packageManager`, or the `yarnPath` 
 | `pkg` | every copy | every copy |
 | `parent/pkg` | only where the **whole path from the root** is `parent > pkg`, so `parent` must be a direct dependency | wherever `parent` is the **direct parent** |
 | `**/parent/pkg`, `a/**/pkg`, `a/b/pkg` | full-path globs, honored | **silently ignored**: reported as unsupported |
-| `pkg@range`, `parent@range/pkg` | **install fails**: reported as unsupported, and the project's resolutions are BLOCKED until removed | honored; the descriptor matches the *requested* range string |
+| `pkg@range`, `parent@range/pkg` | **install fails**: reported as unsupported, and the project's resolutions are BLOCKED until removed | honored, but the descriptor matches the *requested* range string, which dependency paths don't record: reported as unsupported, not evaluated |
 | Values | semver versions and ranges (`npm:` prefix allowed) | same; `patch:`, `portal:`, `link:`, `file:`, git and alias values are reported, not evaluated |
 | Lockfile | `# yarn lockfile v1` | YAML with `__metadata` (any cacheKey/version) |
 | Workspaces | root `workspaces` globs | `workspace:` entries in the lockfile |

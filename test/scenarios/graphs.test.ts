@@ -181,7 +181,8 @@ describe("yarn specifics", () => {
       await repo.commit("drop the key Classic rejects", "2026-02-11T00:00:00Z");
       report = await repo.evaluate(universe(), "2026-03-20T00:00:00Z");
     } else {
-      assert.deepEqual(ignored, ["**/legacy-pack/tar-lite", "x/y"]);
+      // Yarn 2+ ignores globs; descriptor keys match requested ranges, which paths don't record.
+      assert.deepEqual(ignored, ["**/legacy-pack/tar-lite", "left-pad@^1.0.0", "x/y"]);
     }
     const global = report.overrides.find((o) => o.selector === "tar-lite");
     assert.ok(global, JSON.stringify(report.overrides.map((o) => [o.selector, o.status, o.reasons])));
