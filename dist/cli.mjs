@@ -12070,8 +12070,12 @@ var UvAdapter = class {
     const text = await readFile6(join6(dir, file), "utf8");
     const doc = parse(text);
     const uv = isRecord(doc.tool) && isRecord(doc.tool.uv) ? doc.tool.uv : {};
-    if (uv.index !== void 0 || uv["index-url"] !== void 0 || uv["extra-index-url"] !== void 0) {
-      throw new Error("custom package indexes ([[tool.uv.index]], index-url, extra-index-url) are not supported yet; results would not match what uv resolves");
+    const uvToml = await readFile6(join6(dir, project.dir, "uv.toml"), "utf8").then((t) => parse(t), () => ({}));
+    const indexEnv = INDEX_ENV.filter((k) => process.env[k]);
+    if (hasIndex(uv) || hasIndex(uvToml) || indexEnv.length > 0) {
+      throw new Error(
+        `custom package indexes (${indexEnv.length > 0 ? indexEnv.join(", ") : "index settings in pyproject.toml or uv.toml"}) are not supported yet; results would not match what uv resolves`
+      );
     }
     if (uv["build-constraint-dependencies"] !== void 0) {
       unsupported.push({ ecosystem: "uv", file, selector: "build-constraint-dependencies", message: "build constraints affect build environments only and are not evaluated" });
@@ -12149,7 +12153,14 @@ var UvAdapter = class {
         const depName = normalizeName(String(dep.name));
         const candidates = byName.get(depName) ?? [];
         const target = typeof dep.version === "string" ? candidates.find((k) => nodes.get(k).version === dep.version) : candidates.length === 1 ? candidates[0] : void 0;
-        if (target) node.children.set(depName, target);
+        if (!target) continue;
+        const existing = node.children.get(depName);
+        if (existing !== void 0 && existing !== target) {
+          throw new UnsupportedLockfileError(
+            `${project.lockfile} resolves ${depName} to several versions under ${name} (forked by environment marker); forked resolutions are not supported yet`
+          );
+        }
+        node.children.set(depName, target);
       }
     }
     return { nodes, importers };
@@ -12209,6 +12220,10 @@ var UvAdapter = class {
     return lineOf(await readFile6(join6(dir, entry.file), "utf8"), UV_TABLE, entry.keyPath[2], entry.keyPath[3]);
   }
 };
+var INDEX_ENV = ["UV_INDEX", "UV_DEFAULT_INDEX", "UV_INDEX_URL", "UV_EXTRA_INDEX_URL", "UV_FIND_LINKS"];
+function hasIndex(settings) {
+  return ["index", "index-url", "extra-index-url", "find-links"].some((k) => settings[k] !== void 0);
+}
 function importerManifest4(project, importer) {
   return projectPath(project.dir, importer === "" ? "pyproject.toml" : posix5.join(importer, "pyproject.toml"));
 }

@@ -79,8 +79,12 @@ export class UvAdapter implements ImplementedAdapter {
     const doc = parse(text);
     const uv = isRecord(doc.tool) && isRecord(doc.tool.uv) ? doc.tool.uv : {};
     // Metadata is read from PyPI; resolving against another index would compare different worlds.
-    if (uv.index !== undefined || uv["index-url"] !== undefined || uv["extra-index-url"] !== undefined) {
-      throw new Error("custom package indexes ([[tool.uv.index]], index-url, extra-index-url) are not supported yet; results would not match what uv resolves");
+    const uvToml = await readFile(join(dir, project.dir, "uv.toml"), "utf8").then((t) => parse(t), () => ({}));
+    const indexEnv = INDEX_ENV.filter((k) => process.env[k]);
+    if (hasIndex(uv) || hasIndex(uvToml) || indexEnv.length > 0) {
+      throw new Error(
+        `custom package indexes (${indexEnv.length > 0 ? indexEnv.join(", ") : "index settings in pyproject.toml or uv.toml"}) are not supported yet; results would not match what uv resolves`,
+      );
     }
     if (uv["build-constraint-dependencies"] !== undefined) {
       unsupported.push({ ecosystem: "uv", file, selector: "build-constraint-dependencies", message: "build constraints affect build environments only and are not evaluated" });
@@ -162,7 +166,16 @@ export class UvAdapter implements ImplementedAdapter {
         const candidates = byName.get(depName) ?? [];
         const target =
           typeof dep.version === "string" ? candidates.find((k) => nodes.get(k)!.version === dep.version) : candidates.length === 1 ? candidates[0] : undefined;
-        if (target) node.children.set(depName, target);
+        if (!target) continue;
+        // A universal lock can fork one dependency into several versions by environment marker. The graph
+        // holds one child per name, so keeping only one would hide the others from the removal proof.
+        const existing = node.children.get(depName);
+        if (existing !== undefined && existing !== target) {
+          throw new UnsupportedLockfileError(
+            `${project.lockfile} resolves ${depName} to several versions under ${name} (forked by environment marker); forked resolutions are not supported yet`,
+          );
+        }
+        node.children.set(depName, target);
       }
     }
     return { nodes, importers };
@@ -229,6 +242,12 @@ export class UvAdapter implements ImplementedAdapter {
   async locate(_project: Project, dir: string, entry: OverrideEntry): Promise<number | undefined> {
     return lineOf(await readFile(join(dir, entry.file), "utf8"), UV_TABLE, entry.keyPath[2]!, entry.keyPath[3]!);
   }
+}
+
+const INDEX_ENV = ["UV_INDEX", "UV_DEFAULT_INDEX", "UV_INDEX_URL", "UV_EXTRA_INDEX_URL", "UV_FIND_LINKS"];
+
+function hasIndex(settings: Record<string, unknown>): boolean {
+  return ["index", "index-url", "extra-index-url", "find-links"].some((k) => settings[k] !== undefined);
 }
 
 function importerManifest(project: Project, importer: string): string {

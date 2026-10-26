@@ -84,7 +84,8 @@ Resolution:
 Semantics:
 - **Overrides** replace every requirement on a package and are always global. uv has no parent scope. New overrides are exact pins (`name==X`) outside every affected range.
 - **Constraints** only narrow what resolution may pick. uv refuses a constraint outside a parent's range (verified with uv 0.13.0), so a constraint can't force a fix the way an override can. Existing constraints go through the same removal proof, but they are often ordinary policy. Unless retire-overrides created one or `manage` opts it in, it is `REVIEW_NEEDED` and never removed automatically.
-- Python installs exactly one version of each package per environment. Two parents with incompatible ranges are a resolution conflict, not two copies, so the "several release lines" case from npm doesn't arise.
+- Python installs one version of each package per environment, but a universal `uv.lock` can fork a dependency into several versions by environment marker. Forked locks are BLOCKED for now: the graph keeps one child per dependency, so evaluating them could hide a vulnerable branch.
+- Indexes set in pyproject.toml, the project's `uv.toml`, or `UV_INDEX`, `UV_DEFAULT_INDEX`, `UV_INDEX_URL`, `UV_EXTRA_INDEX_URL` or `UV_FIND_LINKS` block evaluation. User- and system-level uv.toml files are not inspected.
 - Versions and specifiers follow PEP 440. `test/fixtures/pep440-oracle.json` checks the implementation against Python's `packaging`, the reference implementation, on 1,248 cases.
 - A package's declared ranges come from each version's `requires_dist` on PyPI. Requirements that differ by marker or extra are treated as a union, which errs towards "still permits a vulnerable version".
 

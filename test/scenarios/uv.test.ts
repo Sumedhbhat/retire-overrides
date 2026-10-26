@@ -153,6 +153,56 @@ describe("uv: override removal", () => {
     assert.equal(report.changes.length, 0);
   });
 
+  it("BLOCKED on an index set in uv.toml or the environment, not just pyproject.toml", async () => {
+    const universe = pypiUniverse({ bundlerFixedAt: t("2026-03-01") });
+    const files = { "pyproject.toml": pyproject(["bundler-kit>=2.5"], OVERRIDE) };
+    const repo = await uvRepo(files, universe, t("2026-03-16"), toolTrailers("uv", "pyproject.toml", "tar-lite", GHSA));
+    await repo.write({ "uv.toml": 'index-url = "https://pypi.corp.example/simple"\n' });
+    await repo.commit("uv.toml", t("2026-03-16"));
+    let report = await repo.evaluate(universe, t("2026-03-21"));
+    assert.ok(report.projects[0]!.blockers.some((b) => /uv\.toml/.test(b)), JSON.stringify(report.projects[0]!.blockers));
+    await repo.write({ "uv.toml": "" });
+    await repo.commit("no uv.toml index", t("2026-03-16"));
+    process.env.UV_EXTRA_INDEX_URL = "https://pypi.corp.example/simple";
+    try {
+      report = await repo.evaluate(universe, t("2026-03-21"));
+    } finally {
+      delete process.env.UV_EXTRA_INDEX_URL;
+    }
+    assert.ok(report.projects[0]!.blockers.some((b) => /UV_EXTRA_INDEX_URL/.test(b)), JSON.stringify(report.projects[0]!.blockers));
+  });
+
+  it("BLOCKED on a lock that forks one dependency into several versions by marker", async () => {
+    const { UvAdapter } = await import("../../src/adapters/uv/uv.ts");
+    const repo = await fixtureRepo("uv", {
+      "pyproject.toml": pyproject(["bundler-kit>=2.4"]),
+      "uv.lock": [
+        "version = 1",
+        'requires-python = ">=3.10"',
+        "",
+        "[[package]]",
+        'name = "app"',
+        'version = "0.1.0"',
+        'source = { virtual = "." }',
+        'dependencies = [{ name = "tar-lite", version = "3.0.5", marker = "python_full_version < \'3.11\'" }, { name = "tar-lite", version = "3.2.0", marker = "python_full_version >= \'3.11\'" }]',
+        "",
+        "[[package]]",
+        'name = "tar-lite"',
+        'version = "3.0.5"',
+        'source = { registry = "https://pypi.org/simple" }',
+        "",
+        "[[package]]",
+        'name = "tar-lite"',
+        'version = "3.2.0"',
+        'source = { registry = "https://pypi.org/simple" }',
+        "",
+      ].join("\n"),
+    });
+    repos.push(repo);
+    const project = { ecosystem: "uv" as const, dir: "", manifest: "pyproject.toml", lockfile: "uv.lock", packageManager: { name: "uv", installed: "0.13.0" } };
+    await assert.rejects(new UvAdapter().readGraph(project, repo.dir), /forked resolutions are not supported/);
+  });
+
   it("reports marker-scoped and URL overrides instead of evaluating them", async () => {
     const uv = 'override-dependencies = ["tar-lite==3.1.4; python_version < \'3.11\'", "legacy-pack @ https://example.com/legacy.whl"]';
     const repo = await fixtureRepo("uv", { "pyproject.toml": pyproject(["bundler-kit>=2.4"], uv) });
