@@ -3,7 +3,7 @@ import type { FetchLike } from "../registry/registry.ts";
 import { schemeFor, type VersionScheme } from "../schemes.ts";
 import type { Advisory, EcosystemId } from "../types.ts";
 import { isAffectedBy } from "../versions.ts";
-import { AdvisoryDataUnavailableError, type AdvisoryProvider } from "./providers.ts";
+import { AdvisoryDataUnavailableError, type AdvisoryProvider, mergeById } from "./providers.ts";
 
 /** OSV's name for each ecosystem's package registry. */
 const OSV_ECOSYSTEM: Partial<Record<EcosystemId, string>> = {
@@ -149,7 +149,8 @@ export class OsvAdvisoryProvider implements AdvisoryProvider {
       // Callers asked about specific versions; return what affects at least one of them.
       if (versions.length === 0 || versions.some((v) => isAffectedBy(v, advisory, scheme))) out.push(advisory);
     }
-    return out.sort((a, b) => a.id.localeCompare(b.id));
+    // OSV often publishes one issue twice (a PYSEC or GO record and its GHSA alias); merge by ID.
+    return mergeById(out).sort((a, b) => a.id.localeCompare(b.id));
   }
 
   private detail(id: string): Promise<OsvVuln> {

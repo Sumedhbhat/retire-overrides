@@ -10992,7 +10992,7 @@ var OsvAdvisoryProvider = class {
       advisory.url = `https://osv.dev/vulnerability/${vuln.id}`;
       if (versions.length === 0 || versions.some((v) => isAffectedBy(v, advisory, scheme))) out.push(advisory);
     }
-    return out.sort((a, b) => a.id.localeCompare(b.id));
+    return mergeById(out).sort((a, b) => a.id.localeCompare(b.id));
   }
   detail(id) {
     let cached = this.details.get(id);

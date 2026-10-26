@@ -85,7 +85,7 @@ export class NpmBulkAdvisoryProvider implements AdvisoryProvider {
 }
 
 /** The bulk endpoint returns one entry per affected branch; one advisory ID becomes one advisory. */
-function mergeById(list: Advisory[]): Advisory[] {
+export function mergeById(list: Advisory[]): Advisory[] {
   const byId = new Map<string, Advisory>();
   for (const a of list) {
     const existing = byId.get(a.id);

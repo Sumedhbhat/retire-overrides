@@ -48,6 +48,14 @@ describe("OSV", () => {
     assert.deepEqual(calls, ["/v1/querybatch", "/v1/vulns/PYSEC-1"]);
   });
 
+  it("merges a record and its GHSA alias into one advisory", async () => {
+    const provider = new OsvAdvisoryProvider({
+      fetch: fakeOsv([vuln("PYSEC-2026-1", { aliases: ["GHSA-jf85-cpcp-j695"] }), vuln("GHSA-jf85-cpcp-j695", { aliases: ["PYSEC-2026-1"] })]),
+    });
+    const list = (await provider.advisoriesFor("npm", new Map([["tar-lite", ["3.0.5"]]]))).get("tar-lite")!;
+    assert.deepEqual(list.map((a) => a.id), ["GHSA-jf85-cpcp-j695"]);
+  });
+
   it("uses one package-wide query when asked about every version", async () => {
     const calls: string[] = [];
     const provider = new OsvAdvisoryProvider({ fetch: fakeOsv([vuln("GHSA-aaaa-bbbb-cccc")], calls) });
