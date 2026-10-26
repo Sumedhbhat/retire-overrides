@@ -508,7 +508,7 @@ var require_parse = __commonJS({
   "node_modules/semver/functions/parse.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
-    var parse = (version, options, throwErrors = false) => {
+    var parse2 = (version, options, throwErrors = false) => {
       if (version instanceof SemVer) {
         return version;
       }
@@ -521,7 +521,7 @@ var require_parse = __commonJS({
         throw er;
       }
     };
-    module.exports = parse;
+    module.exports = parse2;
   }
 });
 
@@ -529,9 +529,9 @@ var require_parse = __commonJS({
 var require_valid = __commonJS({
   "node_modules/semver/functions/valid.js"(exports, module) {
     "use strict";
-    var parse = require_parse();
+    var parse2 = require_parse();
     var valid = (version, options) => {
-      const v = parse(version, options);
+      const v = parse2(version, options);
       return v ? v.version : null;
     };
     module.exports = valid;
@@ -542,9 +542,9 @@ var require_valid = __commonJS({
 var require_clean = __commonJS({
   "node_modules/semver/functions/clean.js"(exports, module) {
     "use strict";
-    var parse = require_parse();
+    var parse2 = require_parse();
     var clean = (version, options) => {
-      const s = parse(version.trim().replace(/^[=v]+/, ""), options);
+      const s = parse2(version.trim().replace(/^[=v]+/, ""), options);
       return s ? s.version : null;
     };
     module.exports = clean;
@@ -579,10 +579,10 @@ var require_inc = __commonJS({
 var require_diff = __commonJS({
   "node_modules/semver/functions/diff.js"(exports, module) {
     "use strict";
-    var parse = require_parse();
+    var parse2 = require_parse();
     var diff = (version1, version2) => {
-      const v1 = parse(version1, null, true);
-      const v2 = parse(version2, null, true);
+      const v1 = parse2(version1, null, true);
+      const v2 = parse2(version2, null, true);
       const comparison = v1.compare(v2);
       if (comparison === 0) {
         return null;
@@ -653,9 +653,9 @@ var require_patch = __commonJS({
 var require_prerelease = __commonJS({
   "node_modules/semver/functions/prerelease.js"(exports, module) {
     "use strict";
-    var parse = require_parse();
+    var parse2 = require_parse();
     var prerelease = (version, options) => {
-      const parsed = parse(version, options);
+      const parsed = parse2(version, options);
       return parsed && parsed.prerelease.length ? parsed.prerelease : null;
     };
     module.exports = prerelease;
@@ -841,7 +841,7 @@ var require_coerce = __commonJS({
   "node_modules/semver/functions/coerce.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
-    var parse = require_parse();
+    var parse2 = require_parse();
     var { safeRe: re, t } = require_re();
     var coerce = (version, options) => {
       if (version instanceof SemVer) {
@@ -876,7 +876,7 @@ var require_coerce = __commonJS({
       const patch = match[4] || "0";
       const prerelease = options.includePrerelease && match[5] ? `-${match[5]}` : "";
       const build = options.includePrerelease && match[6] ? `+${match[6]}` : "";
-      return parse(`${major}.${minor}.${patch}${prerelease}${build}`, options);
+      return parse2(`${major}.${minor}.${patch}${prerelease}${build}`, options);
     };
     module.exports = coerce;
   }
@@ -886,7 +886,7 @@ var require_coerce = __commonJS({
 var require_truncate = __commonJS({
   "node_modules/semver/functions/truncate.js"(exports, module) {
     "use strict";
-    var parse = require_parse();
+    var parse2 = require_parse();
     var constants = require_constants();
     var SemVer = require_semver();
     var truncate = (version, truncation, options) => {
@@ -898,7 +898,7 @@ var require_truncate = __commonJS({
     };
     var cloneInputVersion = (version, options) => {
       const versionStringToParse = version instanceof SemVer ? version.version : version;
-      return parse(versionStringToParse, options);
+      return parse2(versionStringToParse, options);
     };
     var doTruncation = (version, truncation) => {
       if (isPrerelease(truncation)) {
@@ -1942,7 +1942,7 @@ var require_semver2 = __commonJS({
     var constants = require_constants();
     var SemVer = require_semver();
     var identifiers = require_identifiers();
-    var parse = require_parse();
+    var parse2 = require_parse();
     var valid = require_valid();
     var clean = require_clean();
     var inc = require_inc();
@@ -1981,7 +1981,7 @@ var require_semver2 = __commonJS({
     var simplifyRange = require_simplify();
     var subset = require_subset();
     module.exports = {
-      parse,
+      parse: parse2,
       valid,
       clean,
       inc,
@@ -3501,7 +3501,7 @@ var require_stringify = __commonJS({
         props.push(doc.directives.tagString(tag));
       return props.join(" ");
     }
-    function stringify(item, ctx, onComment, onChompKeep) {
+    function stringify2(item, ctx, onComment, onChompKeep) {
       if (identity.isPair(item))
         return item.toString(ctx, onComment, onChompKeep);
       if (identity.isAlias(item)) {
@@ -3530,7 +3530,7 @@ var require_stringify = __commonJS({
 ${ctx.indent}${str}`;
     }
     exports.createStringifyContext = createStringifyContext;
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -3540,7 +3540,7 @@ var require_stringifyPair = __commonJS({
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
       const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
@@ -3562,7 +3562,7 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      let str = stringify2.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
       if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
@@ -3614,7 +3614,7 @@ ${indent}:`;
         ctx.indent = ctx.indent.substring(2);
       }
       let valueCommentDone = false;
-      const valueStr = stringify.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
+      const valueStr = stringify2.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
       let ws = " ";
       if (keyComment || vsb || vcb) {
         ws = vsb ? "\n" : "";
@@ -3755,7 +3755,7 @@ var require_addPairToJSMap = __commonJS({
     "use strict";
     var log = require_log();
     var merge = require_merge();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var identity = require_identity();
     var toJS = require_toJS();
     function addPairToJSMap(ctx, map, { key, value }) {
@@ -3791,7 +3791,7 @@ var require_addPairToJSMap = __commonJS({
       if (typeof jsKey !== "object")
         return String(jsKey);
       if (identity.isNode(key) && ctx?.doc) {
-        const strCtx = stringify.createStringifyContext(ctx.doc, {});
+        const strCtx = stringify2.createStringifyContext(ctx.doc, {});
         strCtx.anchors = /* @__PURE__ */ new Set();
         for (const node of ctx.anchors.keys())
           strCtx.anchors.add(node.anchor);
@@ -3858,12 +3858,12 @@ var require_stringifyCollection = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyCollection(collection, ctx, options) {
       const flow = ctx.inFlow ?? collection.flow;
-      const stringify2 = flow ? stringifyFlowCollection : stringifyBlockCollection;
-      return stringify2(collection, ctx, options);
+      const stringify3 = flow ? stringifyFlowCollection : stringifyBlockCollection;
+      return stringify3(collection, ctx, options);
     }
     function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, flowChars, itemIndent, onChompKeep, onComment }) {
       const { indent, options: { commentString } } = ctx;
@@ -3888,7 +3888,7 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str2 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str2 = stringify2.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
           str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
@@ -3955,7 +3955,7 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str = stringify.stringify(item, itemCtx, () => comment = null);
+        let str = stringify2.stringify(item, itemCtx, () => comment = null);
         reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
         if (i < items.length - 1) {
           str += ",";
@@ -5316,7 +5316,7 @@ var require_stringifyDocument = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyDocument(doc, options) {
       const lines = [];
@@ -5331,7 +5331,7 @@ var require_stringifyDocument = __commonJS({
       }
       if (hasDirectives)
         lines.push("---");
-      const ctx = stringify.createStringifyContext(doc, options);
+      const ctx = stringify2.createStringifyContext(doc, options);
       const { commentString } = ctx.options;
       if (doc.commentBefore) {
         if (lines.length !== 1)
@@ -5353,7 +5353,7 @@ var require_stringifyDocument = __commonJS({
           contentComment = doc.contents.comment;
         }
         const onChompKeep = contentComment ? void 0 : () => chompKeep = true;
-        let body = stringify.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
+        let body = stringify2.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
         if (contentComment)
           body += stringifyComment.lineComment(body, "", commentString(contentComment));
         if ((body[0] === "|" || body[0] === ">") && lines[lines.length - 1] === "---") {
@@ -5361,7 +5361,7 @@ var require_stringifyDocument = __commonJS({
         } else
           lines.push(body);
       } else {
-        lines.push(stringify.stringify(doc.contents, ctx));
+        lines.push(stringify2.stringify(doc.contents, ctx));
       }
       if (doc.directives?.docEnd) {
         if (doc.comment) {
@@ -7497,7 +7497,7 @@ var require_cst_scalar = __commonJS({
 var require_cst_stringify = __commonJS({
   "node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
     "use strict";
-    var stringify = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
+    var stringify2 = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
       switch (token.type) {
         case "block-scalar": {
@@ -7550,7 +7550,7 @@ var require_cst_stringify = __commonJS({
         res += stringifyToken(value);
       return res;
     }
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -9261,7 +9261,7 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse(src, reviver, options) {
+    function parse2(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
@@ -9280,7 +9280,7 @@ var require_public_api = __commonJS({
       }
       return doc.toJS(Object.assign({ reviver: _reviver }, options));
     }
-    function stringify(value, replacer, options) {
+    function stringify2(value, replacer, options) {
       let _replacer = null;
       if (typeof replacer === "function" || Array.isArray(replacer)) {
         _replacer = replacer;
@@ -9302,10 +9302,10 @@ var require_public_api = __commonJS({
         return value.toString(options);
       return new Document.Document(value, _replacer, options).toString(options);
     }
-    exports.parse = parse;
+    exports.parse = parse2;
     exports.parseAllDocuments = parseAllDocuments;
     exports.parseDocument = parseDocument2;
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -9362,7 +9362,7 @@ var require_dist = __commonJS({
 });
 
 // src/cli.ts
-import { appendFile, readFile as readFile9, writeFile as writeFile7 } from "node:fs/promises";
+import { appendFile, readFile as readFile10, writeFile as writeFile8 } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -9419,6 +9419,185 @@ function run(command, args, options) {
 
 // src/schemes.ts
 var import_semver = __toESM(require_semver2(), 1);
+
+// src/pep440.ts
+var VERSION = /^\s*v?(?:(\d+)!)?(\d+(?:\.\d+)*)(?:[-_.]?(a|b|c|rc|alpha|beta|pre|preview)[-_.]?(\d+)?)?(?:-(\d+)|[-_.]?(post|rev|r)[-_.]?(\d+)?)?(?:[-_.]?(dev)[-_.]?(\d+)?)?(?:\+([a-z0-9]+(?:[-_.][a-z0-9]+)*))?\s*$/i;
+function parseVersion(text) {
+  const m = VERSION.exec(text);
+  if (!m) return null;
+  const v = { epoch: m[1] ? Number(m[1]) : 0, release: m[2].split(".").map(Number) };
+  if (m[3]) {
+    const letter = m[3].toLowerCase();
+    const normalized = letter === "alpha" ? "a" : letter === "beta" ? "b" : ["c", "pre", "preview"].includes(letter) ? "rc" : letter;
+    v.pre = [normalized, m[4] ? Number(m[4]) : 0];
+  }
+  if (m[5] !== void 0) v.post = Number(m[5]);
+  else if (m[6]) v.post = m[7] ? Number(m[7]) : 0;
+  if (m[8]) v.dev = m[9] ? Number(m[9]) : 0;
+  if (m[10]) v.local = m[10].toLowerCase().split(/[-_.]/).map((s) => /^\d+$/.test(s) ? Number(s) : s);
+  return v;
+}
+var PRE_ORDER = { a: 0, b: 1, rc: 2 };
+function cmpNumbers(a, b) {
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    const d = (a[i] ?? 0) - (b[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+function compareParsed(a, b, withLocal = true) {
+  if (a.epoch !== b.epoch) return a.epoch - b.epoch;
+  const r = cmpNumbers(a.release, b.release);
+  if (r !== 0) return r;
+  const preKey = (v) => {
+    if (v.pre) return [PRE_ORDER[v.pre[0]] ?? 0, v.pre[1]];
+    if (v.post === void 0 && v.dev !== void 0) return [-1, 0];
+    return [3, 0];
+  };
+  const p = cmpNumbers(preKey(a), preKey(b));
+  if (p !== 0) return p;
+  const postKey = (v) => v.post === void 0 ? -1 : v.post;
+  if (postKey(a) !== postKey(b)) return postKey(a) - postKey(b);
+  const devKey = (v) => v.dev === void 0 ? Number.POSITIVE_INFINITY : v.dev;
+  if (devKey(a) !== devKey(b)) return devKey(a) < devKey(b) ? -1 : 1;
+  if (!withLocal) return 0;
+  if (!a.local && !b.local) return 0;
+  if (!a.local) return -1;
+  if (!b.local) return 1;
+  for (let i = 0; i < Math.max(a.local.length, b.local.length); i++) {
+    const x = a.local[i];
+    const y = b.local[i];
+    if (x === void 0) return -1;
+    if (y === void 0) return 1;
+    if (typeof x === "number" && typeof y === "number") {
+      if (x !== y) return x - y;
+    } else if (typeof x === "number") {
+      return 1;
+    } else if (typeof y === "number") {
+      return -1;
+    } else if (x !== y) {
+      return x < y ? -1 : 1;
+    }
+  }
+  return 0;
+}
+var CLAUSE = /^\s*(~=|===|==|!=|<=|>=|<|>)\s*([^\s,;]+)\s*$/;
+function parseSpecifierSet(text) {
+  const trimmed = text.trim();
+  if (trimmed === "") return [];
+  const clauses = [];
+  for (const part of trimmed.split(",")) {
+    const m = CLAUSE.exec(part);
+    if (!m) return null;
+    const op = m[1];
+    let version = m[2];
+    const wildcard = version.endsWith(".*");
+    if (wildcard) {
+      if (op !== "==" && op !== "!=") return null;
+      version = version.slice(0, -2);
+    }
+    if (op !== "===" && parseVersion(version) === null) return null;
+    if (op === "~=" && (parseVersion(version).release.length < 2 || wildcard)) return null;
+    clauses.push({ op, version, wildcard });
+  }
+  return clauses;
+}
+function prefixMatch(candidate, prefix) {
+  if (candidate.epoch !== prefix.epoch) return false;
+  return prefix.release.every((n, i) => (candidate.release[i] ?? 0) === n);
+}
+function matches(candidate, raw, clause) {
+  if (clause.op === "===") return raw.trim().toLowerCase() === clause.version.toLowerCase();
+  const spec = parseVersion(clause.version);
+  const withLocal = spec.local !== void 0;
+  const cmp = compareParsed(candidate, spec, withLocal);
+  switch (clause.op) {
+    case "==":
+      return clause.wildcard ? prefixMatch(candidate, spec) : cmp === 0;
+    case "!=":
+      return clause.wildcard ? !prefixMatch(candidate, spec) : cmp !== 0;
+    case "<=":
+      return compareParsed(candidate, spec, false) <= 0;
+    case ">=":
+      return compareParsed(candidate, spec, false) >= 0;
+    case "<":
+      if (compareParsed(candidate, spec, false) >= 0) return false;
+      const candidatePre = candidate.pre !== void 0 || candidate.dev !== void 0;
+      return !(!spec.pre && spec.dev === void 0 && candidatePre && cmpNumbers(candidate.release, spec.release) === 0);
+    case ">": {
+      if (compareParsed(candidate, spec, false) <= 0) return false;
+      const sameRelease = cmpNumbers(candidate.release, spec.release) === 0 && candidate.epoch === spec.epoch;
+      return !(sameRelease && spec.post === void 0 && candidate.post !== void 0 && !candidate.pre);
+    }
+    case "~=": {
+      if (compareParsed(candidate, spec, false) < 0) return false;
+      const prefix = { epoch: spec.epoch, release: spec.release.slice(0, -1) };
+      return prefixMatch(candidate, prefix);
+    }
+  }
+}
+var PEP440 = {
+  id: "pep440",
+  valid: (v) => parseVersion(v) !== null,
+  compare(a, b) {
+    const x = parseVersion(a);
+    const y = parseVersion(b);
+    if (!x || !y) return a.localeCompare(b);
+    return compareParsed(x, y);
+  },
+  isPrerelease(v) {
+    const p = parseVersion(v);
+    return p !== null && (p.pre !== void 0 || p.dev !== void 0);
+  },
+  // Advisory and constraint checks include pre-releases, like node-semver's includePrerelease.
+  // ` || ` joins alternatives (requirements that differ by environment marker). It is internal only:
+  // nothing written to a manifest uses it.
+  satisfies(version, range) {
+    const v = parseVersion(version);
+    if (!v) return false;
+    return range.split("||").some((alt) => {
+      const clauses = parseSpecifierSet(alt);
+      return clauses !== null && clauses.every((c) => matches(v, version, c));
+    });
+  },
+  validRange: (range) => range.split("||").every((alt) => parseSpecifierSet(alt) !== null),
+  compatibleLine(version) {
+    const v = parseVersion(version);
+    if (!v) return version;
+    const major = v.release[0] ?? 0;
+    return major > 0 ? `${v.epoch ? `${v.epoch}!` : ""}${major}` : `0.${v.release[1] ?? 0}`;
+  },
+  interval({ gte, lt, lte }) {
+    const parts = [gte ? `>=${gte}` : "", lt ? `<${lt}` : "", lte ? `<=${lte}` : ""].filter((p) => p !== "");
+    return parts.length > 0 ? parts.join(",") : ">=0";
+  },
+  exact: (v) => `==${v}`,
+  bump(existing, version) {
+    const single = /^\s*(==|>=|~=)\s*[^,]+\s*$/.exec(existing);
+    return single ? `${single[1]}${version}` : `>=${version}`;
+  }
+};
+function normalizeName(name) {
+  return name.toLowerCase().replace(/[-_.]+/g, "-");
+}
+function parseRequirement(text) {
+  const [main2, ...markerParts] = text.split(";");
+  const marker2 = markerParts.join(";").trim();
+  const m = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[([^\]]*)\])?\s*(?:\(([^)]*)\)|([^@]*))?\s*$/.exec(main2 ?? "");
+  if (!m) return null;
+  const specifier = (m[3] ?? m[4] ?? "").trim();
+  if (parseSpecifierSet(specifier) === null) return null;
+  const req = {
+    name: normalizeName(m[1]),
+    extras: (m[2] ?? "").split(",").map((e) => e.trim()).filter((e) => e !== ""),
+    specifier
+  };
+  if (marker2) req.marker = marker2;
+  return req;
+}
+
+// src/schemes.ts
 var LOOSE = { includePrerelease: true };
 var SEMVER = {
   id: "semver",
@@ -9448,9 +9627,13 @@ var SEMVER = {
     const parts = [gte ? `>=${gte}` : "", lt ? `<${lt}` : "", lte ? `<=${lte}` : ""].filter((p) => p !== "");
     return parts.length > 0 ? parts.join(" ") : "*";
   },
-  exact: (v) => v
+  exact: (v) => v,
+  bump(existing, version) {
+    const simple = /^\s*(\^|~|>=|=)?\s*v?\d+\.\d+\.\d+\S*\s*$/.exec(existing);
+    return simple === null ? `^${version}` : `${simple[1] ?? ""}${version}`;
+  }
 };
-var schemes = /* @__PURE__ */ new Map();
+var schemes = /* @__PURE__ */ new Map([["uv", PEP440]]);
 function schemeFor(ecosystem) {
   return schemes.get(ecosystem) ?? SEMVER;
 }
@@ -9524,10 +9707,8 @@ function chooseFixedVersion(input) {
   const version = fixed[0];
   return { version, major: true, mature: mature(version) };
 }
-function bumpSpec(existing, version) {
-  const simple = /^\s*(\^|~|>=|=)?\s*v?\d+\.\d+\.\d+\S*\s*$/.exec(existing);
-  if (simple === null) return `^${version}`;
-  return `${simple[1] ?? ""}${version}`;
+function bumpSpec(existing, version, scheme = SEMVER) {
+  return scheme.bump(existing, version);
 }
 
 // src/adapters/node-common.ts
@@ -9605,7 +9786,7 @@ function packageManagerMismatch(manager, installed, pinned) {
   }
   return [];
 }
-var SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", ".yarn", "dist", "build", "vendor", "target"]);
+var SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", ".yarn", "dist", "build", "vendor", "target", ".venv", "venv", "__pycache__", ".tox"]);
 async function findFiles(repo, names, rel = "") {
   const found = [];
   let entries;
@@ -10311,21 +10492,6 @@ var PlannedAdapter = class {
 };
 var plannedAdapters = [
   new PlannedAdapter(
-    "uv",
-    "`override-dependencies` and `constraint-dependencies` under [tool.uv]",
-    "Constraints only narrow what resolution may pick; overrides replace declared requirements. Ordinary constraints are never removed blindly.",
-    [
-      { files: ["pyproject.toml"], pattern: /^\s*override-dependencies\s*=/m, mechanism: "uv `override-dependencies`" },
-      { files: ["pyproject.toml"], pattern: /^\s*constraint-dependencies\s*=/m, mechanism: "uv `constraint-dependencies`" }
-    ]
-  ),
-  new PlannedAdapter(
-    "cargo",
-    "[patch.*] and [replace] in Cargo.toml, plus dependency version requirements",
-    "[patch] replaces a source; it is not a general way to force a registry version, so a plain lockfile update is preferred.",
-    [{ files: ["Cargo.toml"], pattern: /^\s*\[(patch\.|replace\])/m, mechanism: "Cargo `[patch]`/`[replace]`" }]
-  ),
-  new PlannedAdapter(
     "go",
     "`replace` directives and raised `require` versions in go.mod",
     "`// indirect` marks an indirect dependency, not an override, and is never deleted on that basis.",
@@ -10681,12 +10847,1409 @@ function refToKey(name, ref, importerId) {
   return `${name}@${ref}`;
 }
 
+// src/adapters/uv/uv.ts
+import { mkdtemp as mkdtemp4, readFile as readFile6, rm as rm4, writeFile as writeFile4 } from "node:fs/promises";
+import { tmpdir as tmpdir4 } from "node:os";
+import { join as join6, posix as posix5 } from "node:path";
+
+// node_modules/smol-toml/dist/error.js
+/*!
+ * Copyright (c) Squirrel Chat et al., All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+function getLineColFromPtr(string, ptr) {
+  let lines = string.slice(0, ptr).split(/\r?\n/);
+  return [lines.length, lines.pop().length + 1];
+}
+function makeCodeBlock(string, line, column) {
+  let lines = string.split(/\r?\n/);
+  let codeblock = "";
+  let numberLen = (Math.log10(line + 1) | 0) + 1;
+  for (let i = line - 1; i <= line + 1; i++) {
+    let l = lines[i - 1];
+    if (!l)
+      continue;
+    codeblock += i.toString().padEnd(numberLen, " ");
+    codeblock += ":  ";
+    codeblock += l;
+    codeblock += "\n";
+    if (i === line) {
+      codeblock += " ".repeat(numberLen + column + 2);
+      codeblock += "^\n";
+    }
+  }
+  return codeblock;
+}
+var TomlError = class _TomlError extends Error {
+  line;
+  column;
+  codeblock;
+  constructor(message, options) {
+    const [line, column] = getLineColFromPtr(options.toml, options.ptr);
+    const codeblock = makeCodeBlock(options.toml, line, column);
+    super(`Invalid TOML document: ${message}
+
+${codeblock}`, options);
+    this.line = line;
+    this.column = column;
+    this.codeblock = codeblock;
+  }
+  /** @internal */
+  static x(message, ctx, ptr) {
+    throw new _TomlError(message, { toml: ctx.s, ptr: ptr ?? ctx.p });
+  }
+};
+
+// node_modules/smol-toml/dist/primitive.js
+/*!
+ * Copyright (c) Squirrel Chat et al., All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+function parseString(ctx) {
+  let startPtr = ctx.p;
+  let c = ctx.s.charCodeAt(ctx.p++);
+  let first = c;
+  let isLiteral = c === 39;
+  let isMultiline = c === ctx.s.charCodeAt(ctx.p) && c === ctx.s.charCodeAt(ctx.p + 1);
+  if (isMultiline) {
+    if ((c = ctx.s.charCodeAt(ctx.p += 2)) === 10)
+      ctx.p++;
+    else if (c === 13 && ctx.s.charCodeAt(ctx.p + 1) === 10)
+      ctx.p += 2;
+  }
+  let parsed = "";
+  let sliceStart = ctx.p;
+  let state = 0;
+  for (; ctx.p < ctx.s.length; ctx.p++) {
+    c = ctx.s.charCodeAt(ctx.p);
+    if (isMultiline && (c === 10 || c === 13 && ctx.s.charCodeAt(ctx.p + 1) === 10)) {
+      state = state && 3;
+    } else if (c < 32 && c !== 9 || c === 127) {
+      TomlError.x("control characters are not allowed in strings", ctx);
+    } else if ((!state || state === 3) && c === first && (!isMultiline || ctx.s.charCodeAt(ctx.p + 1) === first && ctx.s.charCodeAt(ctx.p + 2) === first)) {
+      if (isMultiline) {
+        if (ctx.s.charCodeAt(ctx.p + 3) === first)
+          ctx.p++;
+        if (ctx.s.charCodeAt(ctx.p + 3) === first)
+          ctx.p++;
+      }
+      if (!state) {
+        let s = ctx.s.slice(sliceStart, ctx.p);
+        parsed = parsed ? parsed + s : s;
+      }
+      ctx.p += isMultiline ? 3 : 1;
+      return parsed;
+    } else if (!state) {
+      if (!isLiteral && c === 92) {
+        parsed += ctx.s.slice(sliceStart, sliceStart = ctx.p);
+        state = 1;
+      }
+    } else if (state === 1) {
+      if (c === 120 || c === 117 || c === 85) {
+        let errPtr = ctx.p++ - 1;
+        let value = 0;
+        let len = c === 120 ? 2 : c === 117 ? 4 : 8;
+        for (let j = 0; j < len; j++, ctx.p++) {
+          let hex = ctx.s.charCodeAt(ctx.p);
+          let digit = (
+            /* 0-9 */
+            hex >= 48 && hex <= 57 ? hex - 48 : (
+              /* A-F */
+              hex >= 65 && hex <= 70 ? hex - 65 + 10 : (
+                /* a-f */
+                hex >= 97 && hex <= 102 ? hex - 97 + 10 : -1
+              )
+            )
+          );
+          if (digit < 0)
+            TomlError.x("invalid non-hex character in unicode escape", ctx);
+          value = value << 4 | digit;
+        }
+        if (value < 0 || value > 1114111 || value >= 55296 && value <= 57343) {
+          TomlError.x("invalid unicode escape", ctx, errPtr);
+        }
+        parsed += String.fromCodePoint(value);
+        sliceStart = ctx.p--;
+        state = 0;
+      } else if (isMultiline && (c === 32 || c === 9)) {
+        state = 2;
+      } else {
+        if (c === 98)
+          parsed += "\b";
+        else if (c === 116)
+          parsed += "	";
+        else if (c === 110)
+          parsed += "\n";
+        else if (c === 102)
+          parsed += "\f";
+        else if (c === 114)
+          parsed += "\r";
+        else if (c === 101)
+          parsed += "\x1B";
+        else if (c === 34)
+          parsed += '"';
+        else if (c === 92)
+          parsed += "\\";
+        else
+          TomlError.x("unrecognised escape sequence", ctx);
+        sliceStart = ctx.p + 1;
+        state = 0;
+      }
+    } else if (c !== 32 && c !== 9) {
+      if (state === 2)
+        TomlError.x("invalid escape: only line-ending whitespace may be escaped", ctx, sliceStart);
+      state = !isLiteral && c === 92 ? 1 : 0;
+      sliceStart = ctx.p;
+    }
+  }
+  TomlError.x("unfinished string", ctx, startPtr);
+}
+
+// node_modules/smol-toml/dist/date.js
+/*!
+ * Copyright (c) Squirrel Chat et al., All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+var DATE_TIME_RE = /^(\d{4}-\d{2}-\d{2})?[Tt ]?(?:(\d{2}):\d{2}(?::\d{2}(?:\.\d+)?)?)?(Z|z|[-+]\d{2}:\d{2})?$/i;
+var TomlDate = class _TomlDate extends Date {
+  #hasDate = false;
+  #hasTime = false;
+  #offset = null;
+  constructor(date, fasttype, unsafeDelim) {
+    let hasDate = true;
+    let hasTime = true;
+    let offset = "Z";
+    let c;
+    if (typeof date === "string") {
+      if (fasttype)
+        prep: {
+          if (fasttype < 3) {
+            if (+date.slice(11, 13) > 23) {
+              date = "";
+              break prep;
+            }
+            if (fasttype === 2) {
+              offset = null;
+              date += "Z";
+            } else if ((c = date.charCodeAt(date.length - 1)) !== 90 && c !== 122) {
+              offset = date.slice(date.length - 6);
+            }
+            if (unsafeDelim)
+              date = date.slice(0, 10) + "T" + date.slice(11);
+          } else if (fasttype === 4) {
+            date = +date.slice(0, 2) > 23 ? "" : `0000-01-01T${date}Z`;
+          }
+          hasDate = fasttype !== 4;
+          hasTime = fasttype !== 3;
+        }
+      else {
+        let match = date.match(DATE_TIME_RE);
+        if (match) {
+          if (!match[1]) {
+            hasDate = false;
+            date = `0000-01-01T${date}`;
+          }
+          hasTime = !!match[2];
+          hasTime && date[10] === " " && (date = date.replace(" ", "T"));
+          if (match[2] && +match[2] > 23) {
+            date = "";
+          } else {
+            offset = match[3] || null;
+            if (!offset && hasTime)
+              date += "Z";
+          }
+        } else {
+          date = "";
+        }
+      }
+    }
+    super(date);
+    if (!isNaN(this.getTime())) {
+      this.#hasDate = hasDate;
+      this.#hasTime = hasTime;
+      this.#offset = offset;
+    }
+  }
+  isDateTime() {
+    return this.#hasDate && this.#hasTime;
+  }
+  isLocal() {
+    return !this.#hasDate || !this.#hasTime || !this.#offset;
+  }
+  isDate() {
+    return this.#hasDate && !this.#hasTime;
+  }
+  isTime() {
+    return this.#hasTime && !this.#hasDate;
+  }
+  isValid() {
+    return this.#hasDate || this.#hasTime;
+  }
+  toISOString() {
+    let iso = super.toISOString();
+    if (this.isDate())
+      return iso.slice(0, 10);
+    if (this.isTime())
+      return iso.slice(11, 23);
+    if (this.#offset === null)
+      return iso.slice(0, -1);
+    if (this.#offset === "Z" || this.#offset === "z")
+      return iso;
+    let offset = +this.#offset.slice(1, 3) * 60 + +this.#offset.slice(4, 6);
+    offset = this.#offset[0] === "-" ? offset : -offset;
+    let offsetDate = new Date(this.getTime() - offset * 6e4);
+    return offsetDate.toISOString().slice(0, -1) + this.#offset;
+  }
+  static wrapAsOffsetDateTime(jsDate, offset = "Z") {
+    let date = new _TomlDate(jsDate);
+    date.#offset = offset;
+    return date;
+  }
+  static wrapAsLocalDateTime(jsDate) {
+    let date = new _TomlDate(jsDate);
+    date.#offset = null;
+    return date;
+  }
+  static wrapAsLocalDate(jsDate) {
+    let date = new _TomlDate(jsDate);
+    date.#hasTime = false;
+    date.#offset = null;
+    return date;
+  }
+  static wrapAsLocalTime(jsDate) {
+    let date = new _TomlDate(jsDate);
+    date.#hasDate = false;
+    date.#offset = null;
+    return date;
+  }
+};
+
+// node_modules/smol-toml/dist/extract.js
+/*!
+ * Copyright (c) Squirrel Chat et al., All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+function isDigit(char, base = 10) {
+  return base === 16 ? char > 47 && char < 58 || char > 64 && char < 71 || char > 96 && char < 103 : char > 47 && char < 48 + base;
+}
+function isEndOfValue(char, delim) {
+  return char === 32 || char === 9 || char === 10 || char === 13 || // Structure end or next value delimiter
+  delim && (char === delim || char === 44) || // Comment
+  char === 35;
+}
+function extractValue(ctx, end) {
+  let errPtr = ctx.p;
+  let c = ctx.s.charCodeAt(ctx.p);
+  if (c === 91 || c === 123) {
+    ctx.d-- || TomlError.x("document contains excessively nested structures. aborting.", ctx);
+    let value = c === 91 ? parseArray(ctx) : parseInlineTable(ctx);
+    ctx.d++;
+    return value;
+  }
+  if (c === 34 || c === 39) {
+    return parseString(ctx);
+  }
+  if (c === 116) {
+    if (ctx.s.charCodeAt(++ctx.p) !== 114 || ctx.s.charCodeAt(++ctx.p) !== 117 || ctx.s.charCodeAt(++ctx.p) !== 101)
+      TomlError.x("invalid value", ctx, errPtr);
+    return ctx.p++, true;
+  }
+  if (c === 102) {
+    if (ctx.s.charCodeAt(++ctx.p) !== 97 || ctx.s.charCodeAt(++ctx.p) !== 108 || ctx.s.charCodeAt(++ctx.p) !== 115 || ctx.s.charCodeAt(++ctx.p) !== 101)
+      TomlError.x("invalid value", ctx, errPtr);
+    return ctx.p++, false;
+  }
+  if (c === 43 || c === 45) {
+    return parseNumber(ctx, ctx.p, ctx.s.charCodeAt(++ctx.p), 44 - c, end);
+  }
+  if (ctx.s.charCodeAt(ctx.p + 4) === 45 && ctx.s.charCodeAt(ctx.p + 7) === 45) {
+    return parseDate(ctx, c, end);
+  }
+  if (ctx.s.charCodeAt(ctx.p + 2) === 58) {
+    return parseTime(ctx, c, end);
+  }
+  return parseNumber(ctx, ctx.p, c, 0, end);
+}
+function parseNumber(ctx, startPtr, startChr, sign, endChr) {
+  let c = startChr;
+  let state = 0;
+  let hasUnderscores = false;
+  if (c === 105) {
+    if (ctx.s.charCodeAt(++ctx.p) !== 110 || ctx.s.charCodeAt(++ctx.p) !== 102)
+      TomlError.x("invalid value", ctx, startPtr);
+    return ctx.p++, (sign || 1) / 0;
+  }
+  if (c === 110) {
+    if (ctx.s.charCodeAt(++ctx.p) !== 97 || ctx.s.charCodeAt(++ctx.p) !== 110)
+      TomlError.x("invalid value", ctx, startPtr);
+    return ctx.p++, NaN;
+  }
+  if (c === 48) {
+    if (++ctx.p >= ctx.s.length || isEndOfValue(c = ctx.s.charCodeAt(ctx.p), endChr))
+      return ctx.bi === true ? 0n : 0;
+    if (!sign) {
+      if (c === 120)
+        return parseIntegerBaseN(ctx, startPtr, 16, endChr);
+      else if (c === 98)
+        return parseIntegerBaseN(ctx, startPtr, 2, endChr);
+      else if (c === 111)
+        return parseIntegerBaseN(ctx, startPtr, 8, endChr);
+    }
+    if (c === 46)
+      state = 2;
+    else if (c === 101 || c === 69)
+      state = 4;
+    else
+      TomlError.x("illegal leading zero", ctx, startPtr);
+  } else if (!isDigit(c))
+    TomlError.x("invalid value", ctx, startPtr);
+  while (++ctx.p < ctx.s.length && (c = ctx.s.charCodeAt(ctx.p), !isEndOfValue(c, endChr))) {
+    if (!state)
+      state = 1;
+    if (c === 95) {
+      if (!(state & 1))
+        TomlError.x("illegal underscore", ctx);
+      state += 11;
+      hasUnderscores = true;
+    } else if (state === 1 && c === 46)
+      state = 2;
+    else if ((state === 1 || state === 3) && (c === 101 || c === 69))
+      state = 4;
+    else if (state === 4 && (c === 43 || c === 45)) {
+      state = 6;
+    } else if (!isDigit(c))
+      TomlError.x(`illegal character in numeric literal`, ctx);
+    else if (state > 9)
+      state -= 11;
+    else if (!(state & 1))
+      state++;
+  }
+  if (!state) {
+    let val = (startChr - 48) * (sign || 1);
+    return ctx.bi === true ? BigInt(val) : val;
+  }
+  if (!(state & 1))
+    TomlError.x("unfinished numeric value", ctx, startPtr);
+  let str = ctx.s.slice(startPtr, ctx.p);
+  if (hasUnderscores)
+    str = str.replaceAll("_", "");
+  return state > 1 ? parseFloat(str) : parseInteger(ctx, str, 10, startPtr);
+}
+function parseIntegerBaseN(ctx, startPtr, base, endChr) {
+  let c, underscore = 1;
+  while (++ctx.p < ctx.s.length && (c = ctx.s.charCodeAt(ctx.p), !isEndOfValue(c, endChr))) {
+    if (c === 95) {
+      if (underscore & 1)
+        TomlError.x("illegal underscore", ctx);
+      underscore = 3;
+    } else if (!isDigit(c, base))
+      TomlError.x(`illegal character in numeric literal`, ctx);
+    else if (underscore & 1)
+      underscore--;
+  }
+  if (underscore & 1)
+    TomlError.x("unfinished numeric value", ctx);
+  let str = ctx.s.slice(startPtr + 2, ctx.p);
+  if (underscore)
+    str = str.replaceAll("_", "");
+  return parseInteger(ctx, str, base, startPtr);
+}
+function parseInteger(ctx, str, base, startPtr) {
+  if (ctx.bi !== true)
+    int: {
+      let val = parseInt(str, base);
+      if (!Number.isSafeInteger(val)) {
+        if (ctx.bi)
+          break int;
+        TomlError.x("integer value cannot be represented losslessly", ctx, startPtr);
+      }
+      return val;
+    }
+  return base === 10 ? BigInt(str) : BigInt((base === 2 ? "0b" : base === 8 ? "0o" : "0x") + str);
+}
+function parseDate(ctx, c, endChr) {
+  let startPtr = ctx.p++, unsafeSeparator;
+  if (!isDigit(c) || !isDigit(ctx.s.charCodeAt(ctx.p++)) || !isDigit(ctx.s.charCodeAt(ctx.p++)) || !isDigit(ctx.s.charCodeAt(ctx.p++))) {
+    return parseNumber(ctx, ctx.p = startPtr, c, 0, endChr);
+  }
+  ctx.p += 5;
+  if (!isDigit(ctx.s.charCodeAt(ctx.p++)))
+    TomlError.x("invalid date-time: date part is malformed", ctx, startPtr);
+  if (ctx.p >= ctx.s.length || ((c = ctx.s.charCodeAt(ctx.p)) !== 32 || (unsafeSeparator = true, !isDigit(ctx.s.charCodeAt(ctx.p + 1)))) && c !== 84 && c !== 116) {
+    let t2 = ctx.s.slice(startPtr, ctx.p);
+    return readDate(ctx, t2, 3, false, startPtr);
+  }
+  if (ctx.s.charCodeAt(ctx.p += 3) !== 58)
+    TomlError.x("invalid date-time: time part is malformed", ctx, startPtr);
+  if (ctx.s.charCodeAt(ctx.p += 3) === 58)
+    ctx.p += 3;
+  if (ctx.s.charCodeAt(ctx.p) === 46)
+    while (isDigit(ctx.s.charCodeAt(++ctx.p)))
+      ;
+  if (c = ctx.s.charCodeAt(ctx.p)) {
+    if (c === 90 || c === 122) {
+      let t2 = ctx.s.slice(startPtr, ++ctx.p);
+      return readDate(ctx, t2, 1, unsafeSeparator, startPtr, "[+00:00]");
+    }
+    if (c === 43 || c === 45) {
+      let t2 = ctx.s.slice(startPtr, ctx.p += 6);
+      return readDate(ctx, t2, 1, unsafeSeparator, startPtr, !ctx.ld && "[" + ctx.s.slice(ctx.p - 6, ctx.p) + "]");
+    }
+  }
+  let t = ctx.s.slice(startPtr, ctx.p);
+  return readDate(ctx, t, 2, unsafeSeparator, startPtr);
+}
+function parseTime(ctx, c, endChr) {
+  let start = ctx.p;
+  if (!isDigit(c) || !isDigit(ctx.s.charCodeAt(++ctx.p))) {
+    return parseNumber(ctx, --ctx.p, c, 0, endChr);
+  }
+  if (ctx.s.charCodeAt(ctx.p += 4) === 58)
+    ctx.p += 3;
+  if (ctx.s.charCodeAt(ctx.p) === 46)
+    while (isDigit(ctx.s.charCodeAt(++ctx.p)))
+      ;
+  let t = ctx.s.slice(start, ctx.p);
+  return readDate(ctx, t, 4, false, start);
+}
+function readDate(ctx, str, type, unsafeDelim, errPtr, temporalSuffix) {
+  if (ctx.ld) {
+    let date = new TomlDate(str, type, unsafeDelim);
+    if (!date.isValid())
+      TomlError.x("invalid date", ctx, errPtr);
+    return date;
+  }
+  try {
+    if (temporalSuffix)
+      str += temporalSuffix;
+    switch (type) {
+      case 1:
+        return Temporal.ZonedDateTime.from(str);
+      case 2:
+        return Temporal.PlainDateTime.from(str);
+      case 3:
+        return Temporal.PlainDate.from(str);
+      case 4:
+        return Temporal.PlainTime.from(str);
+    }
+  } catch (e) {
+    TomlError.x(e instanceof Error ? e.message : "" + e, ctx, errPtr);
+  }
+}
+
+// node_modules/smol-toml/dist/util.js
+/*!
+ * Copyright (c) Squirrel Chat et al., All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+function skipComment(ctx) {
+  for (; ctx.p < ctx.s.length; ctx.p++) {
+    let c = ctx.s.charCodeAt(ctx.p);
+    if (c === 10)
+      break;
+    if (c === 13 && ctx.s.charCodeAt(ctx.p + 1) === 10) {
+      ctx.p++;
+      break;
+    }
+    if (c < 32 && c !== 9 || c === 127) {
+      TomlError.x("control characters are not allowed in comments", ctx);
+    }
+  }
+}
+function skipVoid(ctx, banNewLines, banComments) {
+  let c;
+  while (ctx.p < ctx.s.length) {
+    while (ctx.p < ctx.s.length && ((c = ctx.s.charCodeAt(ctx.p)) === 32 || c === 9 || !banNewLines && (c === 10 || c === 13 && ctx.s.charCodeAt(ctx.p + 1) === 10)))
+      ctx.p++;
+    if (banComments || c !== 35)
+      break;
+    skipComment(ctx);
+  }
+}
+
+// node_modules/smol-toml/dist/struct.js
+/*!
+ * Copyright (c) Squirrel Chat et al., All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+function parseKey(ctx, end = 61) {
+  let startPtr;
+  let state = 0;
+  let parsed = [];
+  let sliceStart;
+  let c = ctx.s.charCodeAt(startPtr = ctx.p);
+  do {
+    if (c === end) {
+      if (!state)
+        TomlError.x("unexpected end of key", ctx);
+      if (state === 1)
+        parsed.push(ctx.s.slice(sliceStart, ctx.p));
+      return ctx.p++, parsed;
+    } else if (c === 46) {
+      if (!state)
+        TomlError.x("illegal empty bare key", ctx);
+      if (state === 1)
+        parsed.push(ctx.s.slice(sliceStart, ctx.p));
+      state = 0;
+    } else if (!state && (c === 34 || c === 39)) {
+      if (c === ctx.s.charCodeAt(ctx.p + 1) && c === ctx.s.charCodeAt(ctx.p + 2))
+        TomlError.x("illegal quoted key: multiline strings are not allowed", ctx);
+      parsed.push(parseString(ctx));
+      state = 2;
+      ctx.p--;
+    } else if (c === 32 || c === 9) {
+      if (state === 1) {
+        parsed.push(ctx.s.slice(sliceStart, ctx.p));
+        state = 2;
+      }
+    } else if (state === 2 || c < 48 && c !== 45 || c > 57 && c < 65 || c > 90 && c < 97 && c !== 95 || c > 122) {
+      TomlError.x("illegal character in key", ctx);
+    } else if (!state) {
+      state = 1;
+      sliceStart = ctx.p;
+    }
+  } while (c = ctx.s.charCodeAt(++ctx.p));
+  TomlError.x("incomplete key-value: cannot find end of key", ctx, startPtr);
+}
+function parseInlineTable(ctx) {
+  let startPtr = ctx.p++;
+  let res = /* @__PURE__ */ Object.create(null);
+  let seen = /* @__PURE__ */ new Set();
+  let c;
+  while (ctx.p < ctx.s.length) {
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p)) === 125) {
+      ctx.p++;
+      return res;
+    }
+    let k;
+    let t = res;
+    let hasOwn = false;
+    let errPtr = ctx.p;
+    let key = parseKey(ctx);
+    for (let i = 0; i < key.length; i++) {
+      if (i)
+        t = hasOwn ? t[k] : t[k] = /* @__PURE__ */ Object.create(null);
+      k = key[i];
+      if ((hasOwn = Object.hasOwn(t, k)) && (typeof t[k] !== "object" || seen.has(t[k]))) {
+        TomlError.x("trying to redefine an already defined value", ctx, errPtr);
+      }
+      let unsafe = k === "__proto__";
+      if (ctx.uk && (unsafe || k === "constructor")) {
+        t = ctx.uk !== 1 && TomlError.x("document contains an unsafe property", ctx, errPtr);
+        break;
+      }
+      if (!hasOwn && unsafe) {
+        Object.defineProperty(t, k, { enumerable: true, configurable: true, writable: true });
+      }
+    }
+    if (hasOwn) {
+      TomlError.x("trying to redefine an already defined value", ctx, errPtr);
+    }
+    skipVoid(ctx, true, true);
+    let value = extractValue(
+      ctx,
+      125
+      /* } */
+    );
+    if (t && typeof (t[k] = value) === "object")
+      seen.add(value);
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p++)) === 125) {
+      return res;
+    }
+    if (c !== 44)
+      TomlError.x("expected comma or end of structure", ctx, ctx.p - 1);
+  }
+  TomlError.x("unfinished table", ctx, startPtr);
+}
+function parseArray(ctx) {
+  let startPtr = ctx.p++;
+  let res = [];
+  let c;
+  while (ctx.p < ctx.s.length) {
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p)) === 93) {
+      ctx.p++;
+      return res;
+    }
+    res.push(extractValue(
+      ctx,
+      93
+      /* ] */
+    ));
+    skipVoid(ctx);
+    if ((c = ctx.s.charCodeAt(ctx.p++)) === 93) {
+      return res;
+    }
+    if (c !== 44)
+      TomlError.x("expected comma or end of structure", ctx, ctx.p - 1);
+  }
+  TomlError.x("unfinished array", ctx, startPtr);
+}
+
+// node_modules/smol-toml/dist/parse.js
+/*!
+ * Copyright (c) Squirrel Chat et al., All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+function peekTable(ctx, key, table, meta, type) {
+  let t = table;
+  let m = meta;
+  let k;
+  let hasOwn = false;
+  let state;
+  for (let i = 0; i < key.length; i++) {
+    if (i) {
+      t = hasOwn ? t[k] : t[k] = /* @__PURE__ */ Object.create(null);
+      m = (state = m[k]).c;
+      if (type === 0 && (state.t === 1 || state.t === 2)) {
+        return null;
+      }
+      if (state.t === 2) {
+        let l = t.length - 1;
+        t = t[l];
+        m = m[l].c;
+      }
+    }
+    k = key[i];
+    if ((hasOwn = Object.hasOwn(t, k)) && m[k]?.t === 0 && m[k]?.d) {
+      return null;
+    }
+    if (!hasOwn) {
+      let unsafe = k === "__proto__";
+      if (ctx.uk && (unsafe || k === "constructor"))
+        return false;
+      if (unsafe) {
+        Object.defineProperty(t, k, { enumerable: true, configurable: true, writable: true });
+        Object.defineProperty(m, k, { enumerable: true, configurable: true, writable: true });
+      }
+      m[k] = {
+        t: i < key.length - 1 && type === 2 ? 3 : type,
+        d: false,
+        i: 0,
+        c: /* @__PURE__ */ Object.create(null)
+      };
+    }
+  }
+  state = m[k];
+  if (state.t !== type && !(type === 1 && state.t === 3)) {
+    return null;
+  }
+  if (type === 2) {
+    if (!state.d) {
+      state.d = true;
+      t[k] = [];
+    }
+    t[k].push(t = /* @__PURE__ */ Object.create(null));
+    state.c[state.i++] = state = { t: 1, d: false, i: 0, c: /* @__PURE__ */ Object.create(null) };
+  }
+  if (state.d) {
+    return null;
+  }
+  state.d = true;
+  if (type === 1) {
+    t = hasOwn ? t[k] : t[k] = /* @__PURE__ */ Object.create(null);
+  } else if (type === 0 && hasOwn) {
+    return null;
+  }
+  return [k, t, state.c];
+}
+function validateTablePeek(ctx, peek, ptr) {
+  if (peek === null || ctx.uk === 2)
+    TomlError.x(peek === null ? "trying to redefine an already defined table or value" : "document contains an unsafe property", ctx, ptr);
+}
+function parse(toml, options = {}) {
+  let ctx = {
+    s: toml,
+    p: 0,
+    d: options.maxDepth ?? 1e3,
+    bi: options.integersAsBigInt ?? false,
+    ld: options.useLegacyDate ?? true,
+    uk: options.unsafeKeyBehaviour === "throw" ? 2 : options.unsafeKeyBehaviour === "drop" ? 1 : 0
+  };
+  let res = /* @__PURE__ */ Object.create(null);
+  let meta = /* @__PURE__ */ Object.create(null);
+  let tmp;
+  let skipping = false;
+  let tbl = res;
+  let m = meta;
+  if (toml.charCodeAt(0) === 65279)
+    ctx.p++;
+  skipVoid(ctx);
+  while (ctx.p < toml.length) {
+    if (toml.charCodeAt(ctx.p) === 91) {
+      let isTableArray = toml.charCodeAt(++ctx.p) === 91;
+      tmp = ctx.p += +isTableArray;
+      skipping = false;
+      let k = parseKey(
+        ctx,
+        93
+        /* ] */
+      );
+      if (isTableArray) {
+        if (toml.charCodeAt(ctx.p) !== 93) {
+          TomlError.x("expected end of table array declaration", ctx);
+        }
+        ctx.p++;
+      }
+      let p = peekTable(
+        ctx,
+        k,
+        res,
+        meta,
+        isTableArray ? 2 : 1
+        /* Type.EXPLICIT */
+      );
+      if (!p) {
+        validateTablePeek(ctx, p, tmp);
+        skipping = true;
+      } else {
+        m = p[2];
+        tbl = p[1];
+      }
+    } else {
+      tmp = ctx.p;
+      let k = parseKey(ctx);
+      let p = peekTable(
+        ctx,
+        k,
+        tbl,
+        m,
+        0
+        /* Type.DOTTED */
+      );
+      if (!p && !skipping)
+        validateTablePeek(ctx, p, tmp);
+      skipVoid(ctx, true, true);
+      let v = extractValue(ctx, void 0);
+      if (p && !skipping)
+        p[1][p[0]] = v;
+    }
+    skipVoid(ctx, true);
+    if (ctx.p < toml.length && (tmp = toml.charCodeAt(ctx.p)) !== 10 && (tmp !== 13 || toml.charCodeAt(ctx.p + 1) !== 10)) {
+      TomlError.x("each key-value declaration must be followed by an end-of-line", ctx);
+    }
+    skipVoid(ctx);
+  }
+  return res;
+}
+
+// node_modules/smol-toml/dist/stringify.js
+/*!
+ * Copyright (c) Squirrel Chat et al., All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+var HAS_WELLFORMED = !!"".isWellFormed;
+
+// node_modules/smol-toml/dist/index.js
+/*!
+ * Copyright (c) Squirrel Chat et al., All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+// src/adapters/uv/toml-edit.ts
+var TomlEditError = class extends Error {
+};
+function tableRange(text, table) {
+  const lines = text.split("\n");
+  let offset = 0;
+  let start = null;
+  for (const line of lines) {
+    const header = /^\s*\[(?!\[)\s*([^\]]+?)\s*\]\s*(#.*)?$/.exec(line) ?? /^\s*\[\[\s*([^\]]+?)\s*\]\]\s*(#.*)?$/.exec(line);
+    if (header) {
+      const name = header[1].split(".").map((p) => p.trim().replace(/^["']|["']$/g, ""));
+      if (start !== null) return { start, end: offset };
+      if (name.join(".") === table.join(".")) start = offset + line.length + 1;
+    }
+    offset += line.length + 1;
+  }
+  if (start !== null) return { start, end: text.length };
+  return table.length === 0 ? { start: 0, end: text.length } : null;
+}
+function skipString(text, i) {
+  const quote = text[i];
+  const triple = text.startsWith(quote.repeat(3), i);
+  if (triple) {
+    const close = text.indexOf(quote.repeat(3), i + 3);
+    if (close === -1) throw new TomlEditError("unterminated string");
+    return close + 3;
+  }
+  for (let j = i + 1; j < text.length; j++) {
+    if (quote === '"' && text[j] === "\\") {
+      j++;
+      continue;
+    }
+    if (text[j] === quote) return j + 1;
+    if (text[j] === "\n") break;
+  }
+  throw new TomlEditError("unterminated string");
+}
+function findArray(text, table, key) {
+  const range = tableRange(text, table);
+  if (!range) return null;
+  const segment = text.slice(range.start, range.end);
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = new RegExp(`^[ \\t]*(?:${escaped}|"${escaped}")[ \\t]*=[ \\t]*\\[`, "m").exec(segment);
+  if (!m) return null;
+  const open = range.start + m.index + m[0].length - 1;
+  const elements = [];
+  let i = open + 1;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "]") return { open, close: i, elements };
+    if (ch === "#") {
+      const nl = text.indexOf("\n", i);
+      i = nl === -1 ? text.length : nl;
+    } else if (ch === '"' || ch === "'") {
+      const end = skipString(text, i);
+      elements.push({ start: i, end, value: parse(`v = ${text.slice(i, end)}`).v });
+      i = end;
+    } else if (/[\s,]/.test(ch)) {
+      i++;
+    } else {
+      throw new TomlEditError(`${key} contains a value that is not a string`);
+    }
+  }
+  throw new TomlEditError(`${key} array is not closed`);
+}
+function readArray(text, table, key) {
+  let node = parse(text);
+  for (const part of table) node = node?.[part];
+  const value = node?.[key];
+  return Array.isArray(value) ? value : void 0;
+}
+function check(text, table, key, expected) {
+  const actual = readArray(text, table, key);
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new TomlEditError(`editing ${[...table, key].join(".")} would produce ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
+  }
+  return text;
+}
+function arrayValues(text, table, key) {
+  return readArray(text, table, key);
+}
+function removeFromArray(text, table, key, value) {
+  const before = readArray(text, table, key) ?? [];
+  const span = findArray(text, table, key);
+  const index = span?.elements.findIndex((e) => e.value === value) ?? -1;
+  if (!span || index === -1) throw new TomlEditError(`${value} is not in ${[...table, key].join(".")}`);
+  const el = span.elements[index];
+  let start = el.start;
+  let end = el.end;
+  const after = /^[ \t]*,?/.exec(text.slice(end))[0];
+  end += after.length;
+  const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+  const lineEndIdx = text.indexOf("\n", end);
+  const lineEnd = lineEndIdx === -1 ? text.length : lineEndIdx;
+  const ownLine = text.slice(lineStart, start).trim() === "" && /^[ \t]*(#.*)?$/.test(text.slice(end, lineEnd));
+  if (ownLine && !/#/.test(text.slice(end, lineEnd))) {
+    start = lineStart;
+    end = Math.min(lineEnd + 1, text.length);
+  } else if (index === span.elements.length - 1 && index > 0) {
+    const prev = span.elements[index - 1];
+    start = prev.end;
+    end = el.end + (after.trim() === "," ? after.length : 0);
+  }
+  const expected = before.filter((_, i) => i !== before.indexOf(value));
+  return check(text.slice(0, start) + text.slice(end), table, key, expected);
+}
+function replaceInArray(text, table, key, from, to) {
+  const before = readArray(text, table, key) ?? [];
+  const span = findArray(text, table, key);
+  const el = span?.elements.find((e) => e.value === from);
+  if (!el) throw new TomlEditError(`${from} is not in ${[...table, key].join(".")}`);
+  const expected = before.map((v) => v === from ? to : v);
+  return check(text.slice(0, el.start) + JSON.stringify(to) + text.slice(el.end), table, key, expected);
+}
+function appendToArray(text, table, key, value) {
+  const before = readArray(text, table, key);
+  const quoted = JSON.stringify(value);
+  const span = findArray(text, table, key);
+  let out;
+  if (span) {
+    const inner = text.slice(span.open + 1, span.close);
+    const last = span.elements.at(-1);
+    if (inner.includes("\n")) {
+      const indent = last ? /([ \t]*)$/.exec(text.slice(text.lastIndexOf("\n", last.start - 1) + 1, last.start))[1] : "    ";
+      const insertAt = last ? last.end + (/^[ \t]*,/.exec(text.slice(last.end))?.[0].length ?? 0) : span.open + 1;
+      const comma = last && !/^[ \t]*,/.test(text.slice(last.end)) ? "," : "";
+      out = text.slice(0, last ? last.end : insertAt) + comma + text.slice(last ? last.end : insertAt, insertAt) + `
+${indent}${quoted},` + text.slice(insertAt);
+    } else {
+      out = last ? text.slice(0, last.end) + `, ${quoted}` + text.slice(last.end) : text.slice(0, span.open + 1) + quoted + text.slice(span.open + 1);
+    }
+  } else {
+    const range = tableRange(text, table);
+    const line = `${key} = [${quoted}]
+`;
+    if (range && table.length > 0) {
+      out = text.slice(0, range.start) + line + text.slice(range.start);
+    } else {
+      const sep = text === "" || text.endsWith("\n\n") ? "" : text.endsWith("\n") ? "\n" : "\n\n";
+      out = `${text}${sep}[${table.join(".")}]
+${line}`;
+    }
+  }
+  return check(out, table, key, [...before ?? [], value]);
+}
+function dropEmptyArray(text, table, key) {
+  const span = findArray(text, table, key);
+  if (!span || span.elements.length > 0) return text;
+  const lineStart = text.lastIndexOf("\n", span.open) + 1;
+  const lineEnd = text.indexOf("\n", span.close);
+  const out = text.slice(0, lineStart) + text.slice(lineEnd === -1 ? text.length : lineEnd + 1);
+  return check(out, table, key, void 0);
+}
+function lineOf(text, table, key, value) {
+  const el = findArray(text, table, key)?.elements.find((e) => e.value === value);
+  return el ? text.slice(0, el.start).split("\n").length : void 0;
+}
+
+// src/adapters/uv/uv.ts
+var UV_TABLE = ["tool", "uv"];
+var OVERRIDES = "override-dependencies";
+var CONSTRAINTS = "constraint-dependencies";
+var CONSTRAINT_SUFFIX = " (constraint)";
+var UvAdapter = class {
+  id = "uv";
+  support = "implemented";
+  mechanisms = "`override-dependencies` and `constraint-dependencies` under [tool.uv] in pyproject.toml, with uv.lock";
+  limitations = "Overrides and constraints are global (uv has no parent scope); entries with environment markers, URL requirements, build-constraint-dependencies and custom package indexes are reported, not evaluated. Ordinary constraints are never removed unless retire-overrides created them or `manage` opts them in.";
+  async detect(repo) {
+    const projects = [];
+    const unsupported = [];
+    const locks = new Set(await findFiles(repo, /* @__PURE__ */ new Set(["uv.lock"])));
+    for (const lockfile of locks) {
+      const dir = posix5.dirname(lockfile) === "." ? "" : posix5.dirname(lockfile);
+      const manifest = projectPath(dir, "pyproject.toml");
+      const installed = await uvVersion(join6(repo, dir)) ?? "0.0.0";
+      let pinned;
+      try {
+        const doc = parse(await readFile6(join6(repo, manifest), "utf8"));
+        const required = isRecord(doc.tool) && isRecord(doc.tool.uv) ? doc.tool.uv["required-version"] : void 0;
+        if (typeof required === "string") pinned = required;
+      } catch {
+        unsupported.push({ ecosystem: "uv", file: lockfile, message: "uv.lock has no readable pyproject.toml beside it" });
+        continue;
+      }
+      projects.push({ ecosystem: "uv", dir, manifest, lockfile, packageManager: { name: "uv", installed, ...pinned ? { pinned } : {} } });
+    }
+    for (const manifest of await findFiles(repo, /* @__PURE__ */ new Set(["pyproject.toml"]))) {
+      const dir = posix5.dirname(manifest) === "." ? "" : posix5.dirname(manifest);
+      if (locks.has(projectPath(dir, "uv.lock"))) continue;
+      const text = await readFile6(join6(repo, manifest), "utf8").catch(() => "");
+      if (/^\s*(override|constraint)-dependencies\s*=/m.test(text) && !await isWorkspaceMember(repo, dir, locks)) {
+        unsupported.push({ ecosystem: "uv", file: manifest, message: "uv overrides or constraints found without a uv.lock; run `uv lock` so they can be evaluated" });
+      }
+    }
+    return { projects, unsupported };
+  }
+  preflight(project) {
+    const { installed, pinned } = project.packageManager;
+    if (installed === "0.0.0") return ["uv is not installed"];
+    if (pinned && !PEP440.satisfies(installed, pinned)) {
+      return [`[tool.uv] required-version is ${pinned} but uv ${installed} is installed`];
+    }
+    return [];
+  }
+  overrideCapabilities() {
+    return { parentScope: false, versionSelector: false };
+  }
+  async readOverrides(project, dir) {
+    const entries = [];
+    const unsupported = [];
+    const file = project.manifest;
+    const text = await readFile6(join6(dir, file), "utf8");
+    const doc = parse(text);
+    const uv = isRecord(doc.tool) && isRecord(doc.tool.uv) ? doc.tool.uv : {};
+    if (uv.index !== void 0 || uv["index-url"] !== void 0 || uv["extra-index-url"] !== void 0) {
+      throw new Error("custom package indexes ([[tool.uv.index]], index-url, extra-index-url) are not supported yet; results would not match what uv resolves");
+    }
+    if (uv["build-constraint-dependencies"] !== void 0) {
+      unsupported.push({ ecosystem: "uv", file, selector: "build-constraint-dependencies", message: "build constraints affect build environments only and are not evaluated" });
+    }
+    for (const key of [OVERRIDES, CONSTRAINTS]) {
+      for (const raw of arrayValues(text, UV_TABLE, key) ?? []) {
+        const req = parseRequirement(raw);
+        const label = key === OVERRIDES ? "override" : "constraint";
+        if (req === null) {
+          unsupported.push({ ecosystem: "uv", file, selector: raw, message: `${label} "${raw}" is not a version requirement (URL and path requirements are not evaluated)` });
+          continue;
+        }
+        if (req.marker) {
+          unsupported.push({ ecosystem: "uv", file, selector: raw, message: `${label} "${raw}" applies only under an environment marker, which is not evaluated` });
+          continue;
+        }
+        const selector = key === OVERRIDES ? req.name : `${req.name}${CONSTRAINT_SUFFIX}`;
+        entries.push({
+          ecosystem: "uv",
+          file,
+          project: project.dir,
+          selector,
+          keyPath: [...UV_TABLE, key, raw],
+          target: { name: req.name },
+          scope: [],
+          value: req.specifier
+        });
+      }
+    }
+    return { entries, unsupported };
+  }
+  selectorFor(target) {
+    return normalizeName(target.name);
+  }
+  overrideApplies(entry, path) {
+    const last = path.steps.at(-1);
+    return last !== void 0 && normalizeName(last.name) === normalizeName(entry.target.name);
+  }
+  async readGraph(project, dir) {
+    const lock = parse(await readFile6(join6(dir, project.lockfile), "utf8"));
+    if (lock.version !== 1 || !Array.isArray(lock.package)) {
+      throw new UnsupportedLockfileError(`${project.lockfile} has version ${String(lock.version)}; only uv.lock version 1 is supported`);
+    }
+    const nodes = /* @__PURE__ */ new Map();
+    const importers = [];
+    const byName = /* @__PURE__ */ new Map();
+    const raws = lock.package.filter(isRecord);
+    for (const raw of raws) {
+      const name = normalizeName(String(raw.name));
+      const version = typeof raw.version === "string" ? raw.version : "0.0.0";
+      const source = isRecord(raw.source) ? raw.source : {};
+      const local = ["virtual", "editable", "directory"].find((k) => typeof source[k] === "string");
+      const node = { key: `${name}@${version}`, name, version, children: /* @__PURE__ */ new Map() };
+      if (local) {
+        const path = posix5.normalize(String(source[local]));
+        node.importer = path === "." ? "" : path;
+        node.key = `importer:${node.importer}`;
+        node.declared = requiresDist(raw);
+        importers.push(node.key);
+      }
+      nodes.set(node.key, node);
+      byName.set(name, [...byName.get(name) ?? [], node.key]);
+    }
+    for (const raw of raws) {
+      const name = normalizeName(String(raw.name));
+      const version = typeof raw.version === "string" ? raw.version : "0.0.0";
+      const node = [...nodes.values()].find((n) => n.name === name && (n.version === version || n.importer !== void 0));
+      if (!node) continue;
+      const deps = [
+        ...Array.isArray(raw.dependencies) ? raw.dependencies : [],
+        ...Object.values(isRecord(raw["optional-dependencies"]) ? raw["optional-dependencies"] : {}).flat(),
+        ...Object.values(isRecord(raw["dev-dependencies"]) ? raw["dev-dependencies"] : {}).flat()
+      ].filter(isRecord);
+      for (const dep of deps) {
+        const depName = normalizeName(String(dep.name));
+        const candidates = byName.get(depName) ?? [];
+        const target = typeof dep.version === "string" ? candidates.find((k) => nodes.get(k).version === dep.version) : candidates.length === 1 ? candidates[0] : void 0;
+        if (target) node.children.set(depName, target);
+      }
+    }
+    return { nodes, importers };
+  }
+  async resolve(project, dir, options) {
+    const cwd = join6(dir, project.dir);
+    const args = ["lock", "--no-build", "--no-progress", ...options.refresh.flatMap((p) => ["--upgrade-package", p])];
+    const cache = options.registry ? await mkdtemp4(join6(tmpdir4(), "retire-overrides-uv-cache-")) : void 0;
+    const env = { UV_NO_PROGRESS: "1" };
+    if (options.registry) {
+      args.push("--default-index", `${options.registry.replace(/\/+$/, "")}/simple`);
+      env.UV_CACHE_DIR = cache;
+    }
+    try {
+      await run("uv", args, { cwd, env });
+    } finally {
+      if (cache) await rm4(cache, { recursive: true, force: true });
+    }
+  }
+  async removeOverride(_project, dir, entry) {
+    const path = join6(dir, entry.file);
+    const key = entry.keyPath[2];
+    let text = removeFromArray(await readFile6(path, "utf8"), UV_TABLE, key, entry.keyPath[3]);
+    text = dropEmptyArray(text, UV_TABLE, key);
+    await writeFile4(path, text);
+  }
+  async writeOverride(project, dir, write) {
+    const name = normalizeName(write.target.name);
+    const spec = PEP440.valid(write.value) ? `==${write.value}` : write.value;
+    const path = join6(dir, write.replaces?.file ?? project.manifest);
+    const text = await readFile6(path, "utf8");
+    if (write.replaces) {
+      const key = write.replaces.keyPath[2];
+      await writeFile4(path, replaceInArray(text, UV_TABLE, key, write.replaces.keyPath[3], `${name}${spec}`));
+      return { file: write.replaces.file, selector: write.replaces.selector };
+    }
+    await writeFile4(path, appendToArray(text, UV_TABLE, OVERRIDES, `${name}${spec}`));
+    return { file: project.manifest, selector: name };
+  }
+  async directSpec(project, dir, importer, name) {
+    const text = await readFile6(join6(dir, importerManifest4(project, importer)), "utf8");
+    const raw = (arrayValues(text, ["project"], "dependencies") ?? []).find((r) => parseRequirement(r)?.name === normalizeName(name));
+    return raw === void 0 ? void 0 : parseRequirement(raw).specifier;
+  }
+  async setDependencySpec(project, dir, importer, name, spec) {
+    const path = join6(dir, importerManifest4(project, importer));
+    const text = await readFile6(path, "utf8");
+    const raw = (arrayValues(text, ["project"], "dependencies") ?? []).find((r) => parseRequirement(r)?.name === normalizeName(name));
+    if (raw === void 0) throw new Error(`${name} is not a [project] dependency of ${importer || "the root project"}`);
+    const req = parseRequirement(raw);
+    const written = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)/.exec(raw)[1];
+    const extras = req.extras.length > 0 ? `[${req.extras.join(",")}]` : "";
+    const updated = `${written}${extras}${spec}${req.marker ? `; ${req.marker}` : ""}`;
+    await writeFile4(path, replaceInArray(text, ["project"], "dependencies", raw, updated));
+  }
+  async locate(_project, dir, entry) {
+    return lineOf(await readFile6(join6(dir, entry.file), "utf8"), UV_TABLE, entry.keyPath[2], entry.keyPath[3]);
+  }
+};
+function importerManifest4(project, importer) {
+  return projectPath(project.dir, importer === "" ? "pyproject.toml" : posix5.join(importer, "pyproject.toml"));
+}
+function requiresDist(raw) {
+  const meta = isRecord(raw.metadata) ? raw.metadata : {};
+  const lists = [
+    ...Array.isArray(meta["requires-dist"]) ? meta["requires-dist"] : [],
+    ...Object.values(isRecord(meta["requires-dev"]) ? meta["requires-dev"] : {}).flat()
+  ].filter(isRecord);
+  const alternatives = /* @__PURE__ */ new Map();
+  for (const r of lists) {
+    const name = normalizeName(String(r.name));
+    const list = alternatives.get(name) ?? [];
+    list.push(typeof r.specifier === "string" && r.specifier !== "" ? r.specifier : ">=0");
+    alternatives.set(name, list);
+  }
+  return Object.fromEntries([...alternatives].map(([n, l]) => [n, [...new Set(l)].join(" || ")]));
+}
+async function uvVersion(cwd) {
+  try {
+    const result = await run("uv", ["--version"], { cwd, allowFailure: true });
+    return result.code === 0 ? /uv (\S+)/.exec(result.stdout)?.[1] : void 0;
+  } catch {
+    return void 0;
+  }
+}
+async function isWorkspaceMember(repo, dir, locks) {
+  let parent = dir;
+  while (parent !== "") {
+    parent = posix5.dirname(parent) === "." ? "" : posix5.dirname(parent);
+    if (locks.has(projectPath(parent, "uv.lock"))) return true;
+  }
+  return false;
+}
+
 // src/adapters/yarn/yarn.ts
 var import_semver5 = __toESM(require_semver2(), 1);
 var import_yaml2 = __toESM(require_dist(), 1);
-import { access as access2, mkdtemp as mkdtemp4, readFile as readFile6, rm as rm4, unlink as unlink2, writeFile as writeFile4 } from "node:fs/promises";
-import { tmpdir as tmpdir4 } from "node:os";
-import { join as join6, posix as posix5 } from "node:path";
+import { access as access2, mkdtemp as mkdtemp5, readFile as readFile7, rm as rm5, unlink as unlink2, writeFile as writeFile5 } from "node:fs/promises";
+import { tmpdir as tmpdir5 } from "node:os";
+import { join as join7, posix as posix6 } from "node:path";
 function yarnLine(version) {
   return (import_semver5.default.coerce(version)?.major ?? 1) >= 2 ? "berry" : "classic";
 }
@@ -10716,17 +12279,17 @@ var YarnAdapter = class {
     const projects = [];
     const unsupported = [];
     for (const lockfile of await findFiles(repo, /* @__PURE__ */ new Set(["yarn.lock"]))) {
-      const dir = posix5.dirname(lockfile) === "." ? "" : posix5.dirname(lockfile);
+      const dir = posix6.dirname(lockfile) === "." ? "" : posix6.dirname(lockfile);
       const manifest = projectPath(dir, "package.json");
       let data;
       try {
-        data = (await readJsonDocument(join6(repo, manifest))).data;
+        data = (await readJsonDocument(join7(repo, manifest))).data;
       } catch {
         unsupported.push({ ecosystem: "yarn", file: lockfile, message: "lockfile has no readable package.json beside it" });
         continue;
       }
-      const installed = await cliVersion("yarn", join6(repo, dir)) ?? "0.0.0";
-      const pinned = pinnedVersion(data, "yarn") ?? await yarnPathVersion(join6(repo, dir));
+      const installed = await cliVersion("yarn", join7(repo, dir)) ?? "0.0.0";
+      const pinned = pinnedVersion(data, "yarn") ?? await yarnPathVersion(join7(repo, dir));
       projects.push({
         ecosystem: "yarn",
         dir,
@@ -10750,7 +12313,7 @@ var YarnAdapter = class {
   async readOverrides(project, dir) {
     const entries = [];
     const unsupported = [];
-    const root = (await readJsonDocument(join6(dir, project.manifest))).data;
+    const root = (await readJsonDocument(join7(dir, project.manifest))).data;
     const file = project.manifest;
     const line = this.line(project);
     const report = (selector, message) => unsupported.push({ ecosystem: "yarn", file, selector, message });
@@ -10817,8 +12380,8 @@ var YarnAdapter = class {
     return parent !== void 0 && selectorMatches(entry.scope[0], parent.name, parent.version);
   }
   async readGraph(project, dir) {
-    const text = await readFile6(join6(dir, project.lockfile), "utf8");
-    const root = (await readJsonDocument(join6(dir, project.manifest))).data;
+    const text = await readFile7(join7(dir, project.lockfile), "utf8");
+    const root = (await readJsonDocument(join7(dir, project.manifest))).data;
     const importers = await this.importerManifests(project, dir, root);
     if (/^# yarn lockfile v1$/m.test(text) || text.trim() === "") return classicGraph(text, importers);
     const lock = (0, import_yaml2.parse)(text);
@@ -10833,20 +12396,20 @@ var YarnAdapter = class {
     const raw = root.workspaces;
     const globs = Array.isArray(raw) ? raw : isRecord(raw) && Array.isArray(raw.packages) ? raw.packages : [];
     if (globs.length === 0) return out;
-    const base = join6(dir, project.dir);
+    const base = join7(dir, project.dir);
     for (const manifest of await findFiles(base, /* @__PURE__ */ new Set(["package.json"]))) {
-      const path = posix5.dirname(manifest);
+      const path = posix6.dirname(manifest);
       if (path === "." || !globs.some((g) => typeof g === "string" && classicPatternMatches(g.split("/").map((s) => s === "*" ? "**" : s), path.split("/")))) continue;
-      const data = await readJsonDocument(join6(base, manifest)).then((d) => d.data).catch(() => void 0);
+      const data = await readJsonDocument(join7(base, manifest)).then((d) => d.data).catch(() => void 0);
       if (data) out.set(path, data);
     }
     return out;
   }
   async resolve(project, dir, options) {
-    const cwd = join6(dir, project.dir);
-    const lockfile = join6(dir, project.lockfile);
+    const cwd = join7(dir, project.dir);
+    const lockfile = join7(dir, project.lockfile);
     if (options.refresh.length > 0) await dropLockedPackages2(lockfile, new Set(options.refresh));
-    const scratch = await mkdtemp4(join6(tmpdir4(), "retire-overrides-yarn-"));
+    const scratch = await mkdtemp5(join7(tmpdir5(), "retire-overrides-yarn-"));
     try {
       if (this.line(project) === "classic") {
         const args = [
@@ -10858,10 +12421,10 @@ var YarnAdapter = class {
           "--ignore-platform",
           "--production=false",
           "--modules-folder",
-          join6(scratch, "node_modules")
+          join7(scratch, "node_modules")
         ];
         if (options.registry) {
-          args.push("--registry", options.registry, "--cache-folder", join6(scratch, "cache"), "--update-checksums");
+          args.push("--registry", options.registry, "--cache-folder", join7(scratch, "cache"), "--update-checksums");
           await retargetResolved(lockfile, options.registry);
         }
         await run("yarn", args, { cwd, env: { npm_config_registry: void 0 } });
@@ -10877,20 +12440,20 @@ var YarnAdapter = class {
           env.YARN_NPM_REGISTRY_SERVER = options.registry.replace(/\/+$/, "");
           env.YARN_UNSAFE_HTTP_WHITELIST = new URL(options.registry).hostname;
           env.YARN_ENABLE_GLOBAL_CACHE = "false";
-          env.YARN_CACHE_FOLDER = join6(scratch, "cache");
-          env.YARN_GLOBAL_FOLDER = join6(scratch, "global");
+          env.YARN_CACHE_FOLDER = join7(scratch, "cache");
+          env.YARN_GLOBAL_FOLDER = join7(scratch, "global");
         }
-        const state = join6(cwd, ".yarn", "install-state.gz");
+        const state = join7(cwd, ".yarn", "install-state.gz");
         const hadState = await exists2(state);
         await run("yarn", ["install", "--mode=update-lockfile"], { cwd, env });
         if (!hadState) await unlink2(state).catch(() => void 0);
       }
     } finally {
-      await rm4(scratch, { recursive: true, force: true });
+      await rm5(scratch, { recursive: true, force: true });
     }
   }
   async removeOverride(_project, dir, entry) {
-    const path = join6(dir, entry.file);
+    const path = join7(dir, entry.file);
     const doc = await readJsonDocument(path);
     const block = doc.data.resolutions;
     if (isRecord(block)) {
@@ -10900,7 +12463,7 @@ var YarnAdapter = class {
     await writeJsonDocument(path, doc);
   }
   async writeOverride(project, dir, write) {
-    const path = join6(dir, project.manifest);
+    const path = join7(dir, project.manifest);
     const doc = await readJsonDocument(path);
     if (!isRecord(doc.data.resolutions)) doc.data.resolutions = {};
     const block = doc.data.resolutions;
@@ -10910,7 +12473,7 @@ var YarnAdapter = class {
     return { file: write.replaces?.file ?? project.manifest, selector: key };
   }
   async directSpec(project, dir, importer, name) {
-    const data = (await readJsonDocument(join6(dir, importerManifest4(project, importer)))).data;
+    const data = (await readJsonDocument(join7(dir, importerManifest5(project, importer)))).data;
     for (const field of ["dependencies", "optionalDependencies", "devDependencies"]) {
       const deps = data[field];
       if (isRecord(deps) && typeof deps[name] === "string") return deps[name];
@@ -10918,7 +12481,7 @@ var YarnAdapter = class {
     return void 0;
   }
   async setDependencySpec(project, dir, importer, name, spec) {
-    const path = join6(dir, importerManifest4(project, importer));
+    const path = join7(dir, importerManifest5(project, importer));
     const doc = await readJsonDocument(path);
     for (const field of ["dependencies", "optionalDependencies", "devDependencies"]) {
       const deps = doc.data[field];
@@ -10931,11 +12494,11 @@ var YarnAdapter = class {
     throw new Error(`${name} is not a direct dependency of ${importer || "the root project"}`);
   }
   async locate(_project, dir, entry) {
-    return locateKeyPath(await readFile6(join6(dir, entry.file), "utf8"), entry.keyPath);
+    return locateKeyPath(await readFile7(join7(dir, entry.file), "utf8"), entry.keyPath);
   }
 };
-function importerManifest4(project, importer) {
-  return projectPath(project.dir, importer === "" ? "package.json" : posix5.join(importer, "package.json"));
+function importerManifest5(project, importer) {
+  return projectPath(project.dir, importer === "" ? "package.json" : posix6.join(importer, "package.json"));
 }
 async function exists2(path) {
   try {
@@ -10946,7 +12509,7 @@ async function exists2(path) {
   }
 }
 async function yarnPathVersion(projectDir) {
-  const rc = await readFile6(join6(projectDir, ".yarnrc.yml"), "utf8").catch(() => "");
+  const rc = await readFile7(join7(projectDir, ".yarnrc.yml"), "utf8").catch(() => "");
   return /^yarnPath:\s*\S*yarn-(\d+\.\d+\.\d+[^/\s]*)\.c?js\s*$/m.exec(rc)?.[1];
 }
 function nameOf(descriptor) {
@@ -11078,25 +12641,25 @@ function berryGraph(lock, resolutions) {
   return { nodes, importers };
 }
 async function retargetResolved(lockfile, registry) {
-  const text = await readFile6(lockfile, "utf8").catch(() => void 0);
+  const text = await readFile7(lockfile, "utf8").catch(() => void 0);
   if (text === void 0) return;
   const base = registry.replace(/\/+$/, "");
-  await writeFile4(lockfile, text.replace(/^( {2}resolved ")https?:\/\/[^/"]+/gm, `$1${base}`));
+  await writeFile5(lockfile, text.replace(/^( {2}resolved ")https?:\/\/[^/"]+/gm, `$1${base}`));
 }
 async function dropLockedPackages2(lockfile, names) {
-  const text = await readFile6(lockfile, "utf8");
+  const text = await readFile7(lockfile, "utf8");
   const blocks = text.split(/\n(?=\S)/);
   const kept = blocks.filter((block) => {
     const header = block.split("\n")[0];
     if (header.startsWith("#") || header.startsWith("__metadata") || !header.trimEnd().endsWith(":")) return true;
     return !headerDescriptors(header).some((d) => names.has(nameOf(d)));
   });
-  await writeFile4(lockfile, kept.join("\n"));
+  await writeFile5(lockfile, kept.join("\n"));
 }
 
 // src/adapters/index.ts
 function allAdapters() {
-  return [new NpmAdapter(), new PnpmAdapter(), new BunAdapter(), new YarnAdapter(), ...plannedAdapters];
+  return [new NpmAdapter(), new PnpmAdapter(), new BunAdapter(), new YarnAdapter(), new UvAdapter(), ...plannedAdapters];
 }
 
 // src/advisories/providers.ts
@@ -11115,8 +12678,11 @@ var NpmBulkAdvisoryProvider = class {
   baseUrl;
   fetchImpl;
   recorder;
+  /** Extra query string, used by the snapshot provider to name the ecosystem. */
+  query;
   constructor(registryUrl, options = {}) {
     this.baseUrl = registryUrl.replace(/\/+$/, "");
+    this.query = options.query ?? "";
     this.fetchImpl = options.fetch ?? fetch;
     this.recorder = options.recorder;
   }
@@ -11140,7 +12706,7 @@ var NpmBulkAdvisoryProvider = class {
     return result;
   }
   async post(body) {
-    const url = `${this.baseUrl}/-/npm/v1/security/advisories/bulk`;
+    const url = `${this.baseUrl}/-/npm/v1/security/advisories/bulk${this.query}`;
     let response;
     try {
       response = await this.fetchImpl(url, {
@@ -11186,6 +12752,22 @@ function toAdvisory(name, entry) {
   if (entry.url) advisory.url = entry.url;
   return advisory;
 }
+var SnapshotAdvisoryProvider = class {
+  id = "snapshot";
+  url;
+  options;
+  constructor(registryUrl, options = {}) {
+    this.url = registryUrl;
+    this.options = options;
+  }
+  supports(ecosystem) {
+    return ecosystem !== "go" && ecosystem !== "cargo" && ecosystem !== "gradle" && ecosystem !== "maven" && ecosystem !== "nuget";
+  }
+  advisoriesFor(ecosystem, versions) {
+    const query = ecosystem === "uv" ? "?ecosystem=PyPI" : "";
+    return new NpmBulkAdvisoryProvider(this.url, { ...this.options, query }).advisoriesFor(ecosystem, versions);
+  }
+};
 var GitHubAdvisoryProvider = class {
   id = "github";
   apiUrl;
@@ -11291,6 +12873,22 @@ var CombinedAdvisoryProvider = class {
 function canonicalId(advisory) {
   return advisory.id.toLowerCase();
 }
+var FirstSupportingProvider = class {
+  id;
+  providers;
+  constructor(providers) {
+    this.providers = providers;
+    this.id = providers.map((p) => p.id).join("|");
+  }
+  supports(ecosystem) {
+    return this.providers.some((p) => p.supports(ecosystem));
+  }
+  advisoriesFor(ecosystem, versions) {
+    const provider = this.providers.find((p) => p.supports(ecosystem));
+    if (!provider) throw new AdvisoryDataUnavailableError(this.id, `no configured provider covers ${ecosystem}`);
+    return provider.advisoriesFor(ecosystem, versions);
+  }
+};
 
 // src/advisories/osv.ts
 var OSV_ECOSYSTEM = {
@@ -11365,7 +12963,7 @@ var OsvAdvisoryProvider = class {
       } while (pageToken);
       result.set(name, this.toAdvisories(name, osvEcosystem, vulns, scheme, versions.get(name) ?? []));
     }
-    for (const [name, list] of result) this.recorder?.recordAdvisories(name, list);
+    for (const [name, list] of result) this.recorder?.recordAdvisories(name, list, osvEcosystem === "PyPI" ? "PyPI" : "npm");
     return result;
   }
   toAdvisories(name, ecosystem, vulns, scheme, versions) {
@@ -11454,16 +13052,165 @@ function sameName(a, b, ecosystem) {
   return norm(a) === norm(b);
 }
 
+// src/registry/registry.ts
+var MetadataUnavailableError = class extends Error {
+  subject;
+  constructor(subject, detail) {
+    super(`metadata unavailable for ${subject}: ${detail}`);
+    this.subject = subject;
+  }
+};
+var NpmRegistryClient = class {
+  baseUrl;
+  fetchImpl;
+  recorder;
+  cache = /* @__PURE__ */ new Map();
+  constructor(baseUrl, options = {}) {
+    this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.fetchImpl = options.fetch ?? fetch;
+    this.recorder = options.recorder;
+  }
+  getPackage(name) {
+    let cached = this.cache.get(name);
+    if (cached === void 0) {
+      cached = this.load(name);
+      this.cache.set(name, cached);
+    }
+    return cached;
+  }
+  async load(name) {
+    const url = `${this.baseUrl}/${name.replace("/", "%2f")}`;
+    let response;
+    try {
+      response = await this.fetchImpl(url, { headers: { accept: "application/json" } });
+    } catch (error) {
+      throw new MetadataUnavailableError(name, `request to ${url} failed: ${String(error)}`);
+    }
+    if (!response.ok) {
+      throw new MetadataUnavailableError(name, `${url} returned HTTP ${response.status}`);
+    }
+    const doc = await response.json();
+    const metadata = normalizePackument(name, doc);
+    this.recorder?.recordPackage(metadata, doc);
+    return metadata;
+  }
+};
+function normalizePackument(name, doc) {
+  const versions = {};
+  for (const [version, raw] of Object.entries(doc.versions ?? {})) {
+    const entry = {
+      version,
+      dependencies: raw.dependencies ?? {},
+      optionalDependencies: raw.optionalDependencies ?? {},
+      peerDependencies: raw.peerDependencies ?? {}
+    };
+    if (raw.deprecated) entry.deprecated = String(raw.deprecated);
+    versions[version] = entry;
+  }
+  const time = {};
+  for (const [version, iso] of Object.entries(doc.time ?? {})) {
+    if (version in versions) time[version] = iso;
+  }
+  const repo = typeof doc.repository === "string" ? doc.repository : doc.repository?.url;
+  const metadata = { name, versions, time };
+  if (repo) metadata.repository = repo;
+  return metadata;
+}
+function declaredRangeIn(meta, dep) {
+  if (meta === void 0) return void 0;
+  return meta.dependencies[dep] ?? meta.optionalDependencies[dep] ?? meta.peerDependencies[dep];
+}
+
+// src/registry/pypi.ts
+var PypiClient = class {
+  baseUrl;
+  fetchImpl;
+  recorder;
+  packages = /* @__PURE__ */ new Map();
+  versions = /* @__PURE__ */ new Map();
+  constructor(baseUrl = "https://pypi.org", options = {}) {
+    this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.fetchImpl = options.fetch ?? fetch;
+    this.recorder = options.recorder;
+  }
+  getPackage(name) {
+    const key = normalizeName(name);
+    let cached = this.packages.get(key);
+    if (!cached) {
+      cached = this.loadPackage(key);
+      this.packages.set(key, cached);
+    }
+    return cached;
+  }
+  getVersion(name, version) {
+    const key = `${normalizeName(name)}@${version}`;
+    let cached = this.versions.get(key);
+    if (!cached) {
+      cached = this.loadVersion(normalizeName(name), version);
+      this.versions.set(key, cached);
+    }
+    return cached;
+  }
+  async loadPackage(name) {
+    const doc = await this.fetchJson(`/pypi/${name}/json`, name);
+    const versions = {};
+    const time = {};
+    for (const [version, files] of Object.entries(doc.releases ?? {})) {
+      if (files.length === 0) continue;
+      const entry = { version, dependencies: {}, optionalDependencies: {}, peerDependencies: {} };
+      if (files.every((f) => f.yanked)) entry.deprecated = `yanked${files[0]?.yanked_reason ? `: ${files[0].yanked_reason}` : ""}`;
+      versions[version] = entry;
+      const uploads = files.map((f) => f.upload_time_iso_8601).filter((t) => typeof t === "string").sort();
+      if (uploads[0]) time[version] = uploads[0];
+    }
+    const metadata = { name, versions, time };
+    const repo = Object.entries(doc.info?.project_urls ?? {}).find(([k]) => /source|repository|code/i.test(k))?.[1];
+    if (repo) metadata.repository = repo;
+    this.recorder?.recordPackage(metadata, {}, "pypi");
+    return metadata;
+  }
+  async loadVersion(name, version) {
+    const meta = await this.getPackage(name);
+    const base = meta.versions[version];
+    if (!base) return void 0;
+    const doc = await this.fetchJson(`/pypi/${name}/${encodeURIComponent(version)}/json`, `${name}==${version}`);
+    const alternatives = /* @__PURE__ */ new Map();
+    for (const line of doc.info?.requires_dist ?? []) {
+      const req = parseRequirement(line);
+      if (req === null) continue;
+      const list = alternatives.get(req.name) ?? [];
+      list.push(req.specifier === "" ? ">=0" : req.specifier);
+      alternatives.set(req.name, list);
+    }
+    const dependencies = {};
+    for (const [dep, list] of alternatives) dependencies[dep] = [...new Set(list)].join(" || ");
+    const entry = { ...base, dependencies };
+    meta.versions[version] = entry;
+    this.recorder?.recordPackage(meta, {}, "pypi");
+    return entry;
+  }
+  async fetchJson(path, subject) {
+    const url = `${this.baseUrl}${path}`;
+    let response;
+    try {
+      response = await this.fetchImpl(url, { headers: { accept: "application/json" } });
+    } catch (error) {
+      throw new MetadataUnavailableError(subject, `request to ${url} failed: ${String(error)}`);
+    }
+    if (!response.ok) throw new MetadataUnavailableError(subject, `${url} returned HTTP ${response.status}`);
+    return await response.json();
+  }
+};
+
 // src/config.ts
 var import_yaml3 = __toESM(require_dist(), 1);
-import { readFile as readFile7 } from "node:fs/promises";
-import { join as join7 } from "node:path";
+import { readFile as readFile8 } from "node:fs/promises";
+import { join as join8 } from "node:path";
 var DEFAULT_CONFIG = {
   minimumReleaseAgeDays: 14,
   staleAfterDays: 90,
   keep: [],
   manage: [],
-  advisoryProviders: ["npm"],
   autoMerge: true,
   mergeMethod: "squash",
   labels: ["dependencies", "security"],
@@ -11477,7 +13224,7 @@ async function loadConfig(repo, explicit) {
   for (const candidate of candidates) {
     let text;
     try {
-      text = await readFile7(join7(repo, candidate), "utf8");
+      text = await readFile8(join8(repo, candidate), "utf8");
     } catch {
       if (explicit) throw new ConfigError(`config file ${explicit} not found`);
       continue;
@@ -11573,9 +13320,9 @@ function isImplemented(adapter) {
 }
 
 // src/git.ts
-import { mkdtemp as mkdtemp5, rm as rm5 } from "node:fs/promises";
-import { tmpdir as tmpdir5 } from "node:os";
-import { join as join8 } from "node:path";
+import { mkdtemp as mkdtemp6, rm as rm6 } from "node:fs/promises";
+import { tmpdir as tmpdir6 } from "node:os";
+import { join as join9 } from "node:path";
 var TRAILER = {
   id: "Retire-Overrides-Id",
   action: "Retire-Overrides-Action",
@@ -11593,14 +13340,14 @@ async function isDirty(repo) {
   return (await git(repo, ["status", "--porcelain", "--untracked-files=no"])).trim() !== "";
 }
 async function createScratch(repo, commit) {
-  const parent = await mkdtemp5(join8(tmpdir5(), "retire-overrides-"));
-  const dir = join8(parent, "wt");
+  const parent = await mkdtemp6(join9(tmpdir6(), "retire-overrides-"));
+  const dir = join9(parent, "wt");
   await git(repo, ["worktree", "add", "--quiet", "--detach", dir, commit]);
   return {
     dir,
     async dispose() {
       await git(repo, ["worktree", "remove", "--force", dir], { allowFailure: true });
-      await rm5(parent, { recursive: true, force: true });
+      await rm6(parent, { recursive: true, force: true });
       await git(repo, ["worktree", "prune"], { allowFailure: true });
     }
   };
@@ -11745,75 +13492,6 @@ function sameResolution(a, b) {
   return addedVersions(a, b).length === 0 && addedVersions(b, a).length === 0;
 }
 
-// src/registry/registry.ts
-var MetadataUnavailableError = class extends Error {
-  subject;
-  constructor(subject, detail) {
-    super(`metadata unavailable for ${subject}: ${detail}`);
-    this.subject = subject;
-  }
-};
-var NpmRegistryClient = class {
-  baseUrl;
-  fetchImpl;
-  recorder;
-  cache = /* @__PURE__ */ new Map();
-  constructor(baseUrl, options = {}) {
-    this.baseUrl = baseUrl.replace(/\/+$/, "");
-    this.fetchImpl = options.fetch ?? fetch;
-    this.recorder = options.recorder;
-  }
-  getPackage(name) {
-    let cached = this.cache.get(name);
-    if (cached === void 0) {
-      cached = this.load(name);
-      this.cache.set(name, cached);
-    }
-    return cached;
-  }
-  async load(name) {
-    const url = `${this.baseUrl}/${name.replace("/", "%2f")}`;
-    let response;
-    try {
-      response = await this.fetchImpl(url, { headers: { accept: "application/json" } });
-    } catch (error) {
-      throw new MetadataUnavailableError(name, `request to ${url} failed: ${String(error)}`);
-    }
-    if (!response.ok) {
-      throw new MetadataUnavailableError(name, `${url} returned HTTP ${response.status}`);
-    }
-    const doc = await response.json();
-    const metadata = normalizePackument(name, doc);
-    this.recorder?.recordPackage(metadata, doc);
-    return metadata;
-  }
-};
-function normalizePackument(name, doc) {
-  const versions = {};
-  for (const [version, raw] of Object.entries(doc.versions ?? {})) {
-    const entry = {
-      version,
-      dependencies: raw.dependencies ?? {},
-      optionalDependencies: raw.optionalDependencies ?? {},
-      peerDependencies: raw.peerDependencies ?? {}
-    };
-    if (raw.deprecated) entry.deprecated = String(raw.deprecated);
-    versions[version] = entry;
-  }
-  const time = {};
-  for (const [version, iso] of Object.entries(doc.time ?? {})) {
-    if (version in versions) time[version] = iso;
-  }
-  const repo = typeof doc.repository === "string" ? doc.repository : doc.repository?.url;
-  const metadata = { name, versions, time };
-  if (repo) metadata.repository = repo;
-  return metadata;
-}
-function declaredRangeIn(meta, dep) {
-  if (meta === void 0) return void 0;
-  return meta.dependencies[dep] ?? meta.optionalDependencies[dep] ?? meta.peerDependencies[dep];
-}
-
 // src/engine/context.ts
 var EngineContext = class {
   options;
@@ -11832,8 +13510,17 @@ var EngineContext = class {
   log(message) {
     this.options.log?.(message);
   }
-  package(name) {
-    return this.options.registry.getPackage(name);
+  registryFor(ecosystem) {
+    return this.options.registries?.[ecosystem] ?? this.options.registry;
+  }
+  package(ecosystem, name) {
+    return this.registryFor(ecosystem).getPackage(name);
+  }
+  /** One version's metadata, fetched separately when the registry needs it. */
+  async versionMeta(ecosystem, name, version) {
+    const registry = this.registryFor(ecosystem);
+    if (registry.getVersion) return registry.getVersion(name, version);
+    return (await registry.getPackage(name)).versions[version];
   }
   /** Every known advisory for a package, across all of its published versions. */
   allAdvisories(ecosystem, name) {
@@ -11841,7 +13528,7 @@ var EngineContext = class {
     let cached = this.allAdvisoriesCache.get(key);
     if (cached === void 0) {
       cached = (async () => {
-        const meta = await this.package(name);
+        const meta = await this.package(ecosystem, name);
         const answer = await this.options.advisories.advisoriesFor(ecosystem, /* @__PURE__ */ new Map([[name, Object.keys(meta.versions)]]), { allVersions: true });
         return answer.get(name) ?? [];
       })();
@@ -11865,22 +13552,21 @@ var EngineContext = class {
     return findings;
   }
   /** Declared range of `dep` in a node: from the lockfile when recorded, else from the published manifest. */
-  async declaredRange(node, dep) {
+  async declaredRange(ecosystem, node, dep) {
     const local = node.declared?.[dep];
     if (local !== void 0) return local;
     if (node.importer !== void 0) return void 0;
-    const meta = await this.package(node.name);
-    return declaredRangeIn(meta.versions[node.version], dep);
+    return declaredRangeIn(await this.versionMeta(ecosystem, node.name, node.version), dep);
   }
   /** Whether `dep` is only a peer of the node (peers don't choose versions; another edge or auto-install does). */
-  async isPeerEdge(node, dep) {
+  async isPeerEdge(ecosystem, node, dep) {
     if (node.importer !== void 0) return false;
     if (node.peers !== void 0) return node.peers.has(dep);
-    const meta = (await this.package(node.name)).versions[node.version];
+    const meta = await this.versionMeta(ecosystem, node.name, node.version);
     return meta !== void 0 && dep in meta.peerDependencies && !(dep in meta.dependencies) && !(dep in meta.optionalDependencies);
   }
-  seen(graph) {
-    this.options.onGraph?.(graph);
+  seen(graph, ecosystem) {
+    this.options.onGraph?.(graph, ecosystem);
   }
 };
 function advisoryRefs(advisories) {
@@ -11900,7 +13586,7 @@ function errorMessage(error) {
 }
 
 // src/engine/alerts.ts
-import { posix as posix6 } from "node:path";
+import { posix as posix7 } from "node:path";
 var HOST_ECOSYSTEMS = {
   npm: ["npm", "pnpm", "bun", "yarn"],
   pip: ["uv"],
@@ -11913,7 +13599,7 @@ function alertRef(a) {
   return { number: a.number, url: a.url, advisory: a.advisory };
 }
 function alertDir(manifest) {
-  const dir = posix6.dirname(manifest);
+  const dir = posix7.dirname(manifest);
   return dir === "." ? "" : dir;
 }
 function inProject(manifest, projectDir) {
@@ -12310,7 +13996,7 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
   let advisories;
   let targetMeta;
   try {
-    targetMeta = await ctx.package(entry.target.name);
+    targetMeta = await ctx.package(entry.ecosystem, entry.target.name);
     advisories = await ctx.allAdvisories(entry.ecosystem, entry.target.name);
   } catch (error) {
     block("metadata-unavailable", errorMessage(error));
@@ -12344,7 +14030,7 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
     return { report, kept: false, conclusive: [] };
   }
   const after = result.graph;
-  ctx.seen(after);
+  ctx.seen(after, entry.ecosystem);
   const instances = [];
   const governedParents = /* @__PURE__ */ new Map();
   for (const instance of instancesOf(after, entry.target.name)) {
@@ -12373,7 +14059,7 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
       const parentLabel = edge.parent.importer !== void 0 ? `${edge.parent.importer || "(root)"} (direct)` : `${edge.parent.name}@${edge.parent.version}`;
       let declared;
       try {
-        declared = await ctx.declaredRange(edge.parent, edge.as);
+        declared = await ctx.declaredRange(entry.ecosystem, edge.parent, edge.as);
       } catch (error) {
         block("metadata-unavailable", `cannot read ${parentLabel}'s declared range for ${edge.as}: ${errorMessage(error)}`);
         continue;
@@ -12387,7 +14073,7 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
         block("constraint-unparseable", `${parentLabel} declares ${edge.as}@"${declared}", which is not a registry range`);
         continue;
       }
-      const peer = await ctx.isPeerEdge(edge.parent, edge.as).catch(() => false);
+      const peer = await ctx.isPeerEdge(entry.ecosystem, edge.parent, edge.as).catch(() => false);
       let permits = permittedVulnerableVersions(spec.range, targetMeta, advisories, sch);
       if (peer) {
         const pick = maxSatisfying(targetMeta, spec.range, ctx.now, sch);
@@ -12425,7 +14111,7 @@ async function evaluateRemoval(ctx, adapter, project, baseDir, entry, baseline, 
   for (const { name, version } of added) {
     const evidence = { name, version };
     try {
-      const meta = await ctx.package(name);
+      const meta = await ctx.package(entry.ecosystem, name);
       const published = meta.time[version];
       if (published === void 0) {
         block("release-date-unknown", `no publish time for ${name}@${version}`);
@@ -12491,11 +14177,11 @@ function summarizeVersions(versions) {
   return versions.length > 5 ? `${shown} and ${versions.length - 5} more` : shown;
 }
 async function upstreamContext(ctx, ecosystem, parent, dep) {
-  const meta = await ctx.package(parent);
+  const meta = await ctx.package(ecosystem, parent);
   const sch = schemeFor(ecosystem);
   const latest = availableVersions(meta, ctx.now, sch).filter((v2) => !sch.isPrerelease(v2)).at(-1);
   if (latest === void 0) return `${parent}: no published release found`;
-  const v = meta.versions[latest];
+  const v = await ctx.versionMeta(ecosystem, parent, latest);
   const range = v?.dependencies[dep] ?? v?.optionalDependencies[dep] ?? v?.peerDependencies[dep];
   const published = meta.time[latest] ? ` (published ${meta.time[latest].slice(0, 10)})` : "";
   const repo = meta.repository ? `; source: ${meta.repository}` : "";
@@ -12543,7 +14229,7 @@ async function planGroup(ctx, adapter, project, locked, lockedFindings, base, en
   let advisories;
   let meta;
   try {
-    meta = await ctx.package(group.name);
+    meta = await ctx.package(project.ecosystem, group.name);
     advisories = await ctx.allAdvisories(project.ecosystem, group.name);
   } catch (error) {
     report.reasons.push({ code: "metadata-unavailable", message: errorMessage(error) });
@@ -12634,7 +14320,7 @@ async function verify(input, candidate) {
     verdict.reasons.push({ code: "resolution-failed", message: tail(outcome.message, 6) });
     return verdict;
   }
-  ctx.seen(outcome.graph);
+  ctx.seen(outcome.graph, project.ecosystem);
   const still = instancesOf(outcome.graph, input.name).filter((i) => affectingAdvisories(i.version, input.advisories, schemeFor(project.ecosystem)).length > 0);
   for (const i of still) {
     verdict.reasons.push({
@@ -12651,7 +14337,7 @@ async function verify(input, candidate) {
   }
   for (const { name, version } of addedVersions(input.base, outcome.graph)) {
     const evidence = { name, version };
-    const published = await ctx.package(name).then((m) => m.time[version]).catch(() => void 0);
+    const published = await ctx.package(project.ecosystem, name).then((m) => m.time[version]).catch(() => void 0);
     if (published === void 0) {
       verdict.blockers.push(`release date of ${name}@${version} is unknown`);
     } else {
@@ -12735,18 +14421,18 @@ async function normalFix({ ctx, adapter, project }, graph, vulnerable, name, pla
     async apply(dir) {
       for (const b of bumps) {
         const spec = await adapter.directSpec(project, dir, b.importer, b.name) ?? `^${b.from}`;
-        await adapter.setDependencySpec(project, dir, b.importer, b.name, bumpSpec(spec, b.to));
+        await adapter.setDependencySpec(project, dir, b.importer, b.name, bumpSpec(spec, b.to, schemeFor(project.ecosystem)));
       }
       return [.../* @__PURE__ */ new Set([...refresh, ...bumps.map((b) => b.name)])];
     }
   };
 }
 async function fixEdge(ctx, ecosystem, graph, edge, wanted, depth) {
-  const childMeta = await ctx.package(edge.child.name);
+  const childMeta = await ctx.package(ecosystem, edge.child.name);
   const childAdvisories = await ctx.allAdvisories(ecosystem, edge.child.name);
   const sch = schemeFor(ecosystem);
   const ok = async (v) => !childAdvisories.some((a) => isAffectedBy(v, a, sch)) && await wanted(v);
-  const declared = await ctx.declaredRange(edge.parent, edge.as);
+  const declared = await ctx.declaredRange(ecosystem, edge.parent, edge.as);
   const spec = declared === void 0 ? null : parseSpec(edge.as, declared, sch);
   if (spec !== null) {
     const best = maxSatisfying(childMeta, spec.range, ctx.now, sch);
@@ -12766,9 +14452,9 @@ async function fixEdge(ctx, ecosystem, graph, edge, wanted, depth) {
     return null;
   }
   if (depth >= MAX_PARENT_DEPTH) return null;
-  const parentMeta = await ctx.package(edge.parent.name);
+  const parentMeta = await ctx.package(ecosystem, edge.parent.name);
   const parentOk = async (pv) => {
-    const range = declaredRangeIn(parentMeta.versions[pv], edge.as);
+    const range = declaredRangeIn(await ctx.versionMeta(ecosystem, edge.parent.name, pv), edge.as);
     if (range === void 0) return true;
     const s = parseSpec(edge.as, range, sch);
     if (s === null) return false;
@@ -12922,7 +14608,7 @@ async function evaluate(options) {
       ...options.configPath ? { path: options.configPath } : {},
       minimumReleaseAgeDays: options.config.minimumReleaseAgeDays,
       staleAfterDays: options.config.staleAfterDays,
-      advisoryProviders: options.config.advisoryProviders
+      advisoryProviders: options.config.advisoryProviders ?? ["default: npm for JavaScript, osv otherwise"]
     },
     metadata: { registry: options.registryLabel, ...options.snapshotPath ? { snapshot: options.snapshotPath } : {} },
     projects: [],
@@ -12964,7 +14650,7 @@ async function evaluate(options) {
         let locked;
         try {
           locked = await adapter.readGraph(project, base.dir);
-          ctx.seen(locked);
+          ctx.seen(locked, project.ecosystem);
         } catch (error) {
           blockers.push(errorMessage(error));
         }
@@ -12979,7 +14665,7 @@ async function evaluate(options) {
             }
           });
         }
-        if (!(resolved instanceof Error)) ctx.seen(resolved);
+        if (!(resolved instanceof Error)) ctx.seen(resolved, project.ecosystem);
         const lockfileStale = locked !== void 0 && !(resolved instanceof Error) && !sameResolution(locked, resolved);
         let baselineFindings = new Error("baseline unavailable");
         if (!(resolved instanceof Error)) {
@@ -13062,7 +14748,7 @@ function emptyBaseline() {
 var import_semver6 = __toESM(require_semver2(), 1);
 import { createHash as createHash2 } from "node:crypto";
 import { createServer } from "node:http";
-import { gunzipSync, gzipSync as gzipSync2 } from "node:zlib";
+import { crc32, gunzipSync, gzipSync as gzipSync2 } from "node:zlib";
 async function startSnapshotRegistry(snapshot, options) {
   const server = createServer((req, res) => {
     handle(snapshot, options.now, req, res, baseUrl).catch((error) => {
@@ -13087,12 +14773,14 @@ async function handle(snapshot, now, req, res, baseUrl) {
   if (req.method === "POST" && path === "/-/npm/v1/security/advisories/bulk") {
     if (snapshot.failures?.advisories) return send(res, 503, { error: "advisory service unavailable" });
     const body = JSON.parse(await readBody(req));
-    return send(res, 200, bulkAdvisories(snapshot, now, body));
+    const ecosystem = url.searchParams.get("ecosystem") === "PyPI" ? "PyPI" : "npm";
+    return send(res, 200, bulkAdvisories(snapshot, now, body, ecosystem));
   }
   if (req.method === "POST" && path.startsWith("/-/npm/v1/security/")) {
     return send(res, 404, { error: "only the bulk advisory endpoint is served" });
   }
   if (req.method !== "GET") return send(res, 405, { error: "method not allowed" });
+  if (snapshot.pypi && /^\/(pypi|simple|files)\//.test(path)) return handlePypi(snapshot, now, req, res, baseUrl, path);
   const tarball = /^\/((?:@[^/]+\/)?[^/@]+)\/-\/[^/]+-(\d[^/]*)\.tgz$/.exec(path);
   if (tarball) {
     const pkg2 = snapshot.packages[tarball[1]];
@@ -13149,14 +14837,16 @@ function packument(name, pkg, now, baseUrl) {
   if (pkg.repository) doc.repository = { type: "git", url: pkg.repository };
   return doc;
 }
-function bulkAdvisories(snapshot, now, body) {
+function bulkAdvisories(snapshot, now, body, ecosystem) {
   const out = {};
+  const scheme = ecosystem === "PyPI" ? PEP440 : SEMVER;
   snapshot.advisories.forEach((a, index) => {
+    if ((a.ecosystem ?? "npm") !== ecosystem) return;
     if (a.published !== void 0 && Date.parse(a.published) > now.getTime()) return;
     const versions = body[a.package];
     if (versions === void 0) return;
     const range = a.ranges.join(" || ");
-    if (!versions.some((v) => satisfies(v, range))) return;
+    if (!versions.some((v) => a.ranges.some((r) => scheme.satisfies(v, r)))) return;
     (out[a.package] ??= []).push({
       id: 1e6 + index,
       url: a.url ?? `https://github.com/advisories/${a.id}`,
@@ -13216,11 +14906,130 @@ function syntheticTarball(name, version, meta = {}) {
   tarballCache.set(key, gz);
   return gz;
 }
+function handlePypi(snapshot, now, req, res, baseUrl, path) {
+  const pypi = snapshot.pypi ?? {};
+  const visible = (pkg) => Object.keys(pkg.versions).filter((v) => pkg.time[v] === void 0 || Date.parse(pkg.time[v]) <= now.getTime());
+  const json = /^\/pypi\/([^/]+)\/(?:([^/]+)\/)?json$/.exec(path);
+  if (json) {
+    const name = normalizeName(json[1]);
+    if (snapshot.failures?.packages?.includes(name)) return send(res, 503, { error: "registry unavailable" });
+    const pkg = pypi[name];
+    if (!pkg) return send(res, 404, { message: "Not Found" });
+    const versions = visible(pkg);
+    if (json[2]) {
+      const v = json[2];
+      if (!versions.includes(v)) return send(res, 404, { message: "Not Found" });
+      const meta = pkg.versions[v];
+      return send(res, 200, { info: { name, version: v, requires_dist: requiresDist2(meta) }, urls: [pypiFile(name, v, pkg, baseUrl)] });
+    }
+    const releases = {};
+    for (const v of versions) releases[v] = [pypiFile(name, v, pkg, baseUrl)];
+    return send(res, 200, { info: { name, requires_dist: null, project_urls: pkg.repository ? { Source: pkg.repository } : null }, releases });
+  }
+  const simple = /^\/simple\/([^/]+)\/?$/.exec(path);
+  if (simple) {
+    const name = normalizeName(simple[1]);
+    const pkg = pypi[name];
+    if (!pkg) return send(res, 404, { message: "Not Found" });
+    const files = visible(pkg).map((v) => {
+      const f = pypiFile(name, v, pkg, baseUrl);
+      return {
+        filename: f.filename,
+        url: f.url,
+        hashes: { sha256: f.sha256 },
+        "core-metadata": { sha256: f.metadataSha256 },
+        "data-dist-info-metadata": { sha256: f.metadataSha256 },
+        "upload-time": f.upload_time_iso_8601,
+        yanked: pkg.versions[v].deprecated ? pkg.versions[v].deprecated : false
+      };
+    });
+    res.statusCode = 200;
+    res.setHeader("content-type", "application/vnd.pypi.simple.v1+json");
+    res.end(JSON.stringify({ meta: { "api-version": "1.1" }, name, versions: visible(pkg), files }));
+    return;
+  }
+  const file = /^\/files\/([^/]+?)-([^-/]+)-py3-none-any\.whl(\.metadata)?$/.exec(path);
+  if (file) {
+    const name = normalizeName(file[1]);
+    const pkg = pypi[name];
+    const v = file[2];
+    if (!pkg?.versions[v]) return send(res, 404, { message: "Not Found" });
+    res.statusCode = 200;
+    res.setHeader("content-type", "application/octet-stream");
+    res.end(file[3] ? coreMetadata(name, v, pkg.versions[v]) : syntheticWheel(name, v, pkg.versions[v]));
+    return;
+  }
+  send(res, 404, { message: "Not Found" });
+}
+function requiresDist2(meta) {
+  return Object.entries(meta.dependencies ?? {}).map(([dep, spec]) => spec ? `${dep}${spec}` : dep);
+}
+function coreMetadata(name, version, meta) {
+  const lines = ["Metadata-Version: 2.1", `Name: ${name}`, `Version: ${version}`, ...requiresDist2(meta).map((r) => `Requires-Dist: ${r}`), ""];
+  return Buffer.from(lines.join("\n"));
+}
+function wheelName(name, version) {
+  return `${name.replace(/-/g, "_")}-${version}-py3-none-any.whl`;
+}
+function pypiFile(name, version, pkg, baseUrl) {
+  const meta = pkg.versions[version];
+  const filename = wheelName(name, version);
+  return {
+    filename,
+    url: `${baseUrl}/files/${filename}`,
+    sha256: createHash2("sha256").update(syntheticWheel(name, version, meta)).digest("hex"),
+    metadataSha256: createHash2("sha256").update(coreMetadata(name, version, meta)).digest("hex"),
+    upload_time_iso_8601: pkg.time[version] ?? "1970-01-01T00:00:00Z",
+    yanked: Boolean(meta.deprecated)
+  };
+}
+function syntheticWheel(name, version, meta) {
+  const dist = `${name.replace(/-/g, "_")}-${version}.dist-info`;
+  const entries = [
+    [`${dist}/METADATA`, coreMetadata(name, version, meta)],
+    [`${dist}/WHEEL`, Buffer.from("Wheel-Version: 1.0\nGenerator: retire-overrides\nRoot-Is-Purelib: true\nTag: py3-none-any\n")],
+    [`${dist}/RECORD`, Buffer.from("")]
+  ];
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const [path, data] of entries) {
+    const nameBuf = Buffer.from(path);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(67324752, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(33639248, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, nameBuf, data);
+    centrals.push(central, nameBuf);
+    offset += local.length + nameBuf.length + data.length;
+  }
+  const centralSize = centrals.reduce((n, b) => n + b.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(101010256, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, ...centrals, end]);
+}
 
 // src/metadata/snapshot.ts
-import { readFile as readFile8, writeFile as writeFile5 } from "node:fs/promises";
+import { readFile as readFile9, writeFile as writeFile6 } from "node:fs/promises";
 async function readSnapshot(path) {
-  const parsed = JSON.parse(await readFile8(path, "utf8"));
+  const parsed = JSON.parse(await readFile9(path, "utf8"));
   if (parsed.schemaVersion !== 1) {
     throw new Error(`${path}: unsupported metadata snapshot schemaVersion ${String(parsed.schemaVersion)}`);
   }
@@ -13230,8 +15039,9 @@ async function readSnapshot(path) {
 }
 var Recorder = class {
   packages = /* @__PURE__ */ new Map();
+  pypi = /* @__PURE__ */ new Map();
   advisories = /* @__PURE__ */ new Map();
-  recordPackage(metadata, raw) {
+  recordPackage(metadata, raw, registry = "npm") {
     const versions = {};
     for (const [v, meta] of Object.entries(metadata.versions)) {
       const entry = {};
@@ -13249,16 +15059,17 @@ var Recorder = class {
     }
     const pkg = { versions, time: metadata.time };
     if (metadata.repository) pkg.repository = metadata.repository;
-    this.packages.set(metadata.name, pkg);
+    (registry === "pypi" ? this.pypi : this.packages).set(metadata.name, pkg);
   }
-  recordAdvisories(name, advisories) {
+  recordAdvisories(name, advisories, ecosystem = "npm") {
     for (const a of advisories) {
       const entry = { id: a.id, package: name, ranges: a.ranges };
+      if (ecosystem === "PyPI") entry.ecosystem = "PyPI";
       if (a.severity) entry.severity = a.severity;
       if (a.title) entry.title = a.title;
       if (a.url) entry.url = a.url;
       if (a.aliases.length > 0) entry.aliases = a.aliases;
-      this.advisories.set(`${name}\0${a.id}`, entry);
+      this.advisories.set(`${ecosystem}\0${name}\0${a.id}`, entry);
     }
   }
   toSnapshot(capturedAt) {
@@ -13267,17 +15078,22 @@ var Recorder = class {
     const advisories = [...this.advisories.values()].sort(
       (a, b) => a.package.localeCompare(b.package) || a.id.localeCompare(b.id)
     );
-    return { schemaVersion: 1, capturedAt: capturedAt.toISOString(), packages, advisories };
+    const snapshot = { schemaVersion: 1, capturedAt: capturedAt.toISOString(), packages, advisories };
+    if (this.pypi.size > 0) {
+      snapshot.pypi = {};
+      for (const name of [...this.pypi.keys()].sort()) snapshot.pypi[name] = this.pypi.get(name);
+    }
+    return snapshot;
   }
   async save(path, capturedAt) {
-    await writeFile5(path, `${JSON.stringify(this.toSnapshot(capturedAt), null, 2)}
+    await writeFile6(path, `${JSON.stringify(this.toSnapshot(capturedAt), null, 2)}
 `);
   }
 };
 
 // src/publish/directory.ts
-import { mkdir, writeFile as writeFile6 } from "node:fs/promises";
-import { join as join9 } from "node:path";
+import { mkdir, writeFile as writeFile7 } from "node:fs/promises";
+import { join as join10 } from "node:path";
 var DirectoryPublisher = class {
   dir;
   constructor(dir) {
@@ -13288,25 +15104,25 @@ var DirectoryPublisher = class {
   }
   async publish(report) {
     const outcomes = [];
-    await mkdir(join9(this.dir, "changes"), { recursive: true });
-    await mkdir(join9(this.dir, "issues"), { recursive: true });
+    await mkdir(join10(this.dir, "changes"), { recursive: true });
+    await mkdir(join10(this.dir, "issues"), { recursive: true });
     for (const change of report.changes) {
       const name = `${change.kind}-${shortHash(change.identity)}`;
       const { patch, ...meta } = change;
-      await writeFile6(join9(this.dir, "changes", `${name}.patch`), patch);
-      await writeFile6(join9(this.dir, "changes", `${name}.json`), `${JSON.stringify(meta, null, 2)}
+      await writeFile7(join10(this.dir, "changes", `${name}.patch`), patch);
+      await writeFile7(join10(this.dir, "changes", `${name}.json`), `${JSON.stringify(meta, null, 2)}
 `);
-      outcomes.push({ identity: change.identity, kind: "pull-request", action: "created", message: join9(this.dir, "changes", `${name}.patch`) });
+      outcomes.push({ identity: change.identity, kind: "pull-request", action: "created", message: join10(this.dir, "changes", `${name}.patch`) });
     }
     for (const issue of report.issues) {
       const name = `stale-${shortHash(issue.identity)}`;
-      await writeFile6(join9(this.dir, "issues", `${name}.md`), `# ${issue.title}
+      await writeFile7(join10(this.dir, "issues", `${name}.md`), `# ${issue.title}
 
 ${issue.body}
 `);
-      await writeFile6(join9(this.dir, "issues", `${name}.json`), `${JSON.stringify(issue, null, 2)}
+      await writeFile7(join10(this.dir, "issues", `${name}.json`), `${JSON.stringify(issue, null, 2)}
 `);
-      outcomes.push({ identity: issue.identity, kind: "issue", action: "created", message: join9(this.dir, "issues", `${name}.md`) });
+      outcomes.push({ identity: issue.identity, kind: "issue", action: "created", message: join10(this.dir, "issues", `${name}.md`) });
     }
     return outcomes;
   }
@@ -13923,7 +15739,7 @@ ${" ".repeat(21)}${a.limitations}
   let report;
   if (values["from-report"]) {
     if (command !== "publish") throw new UsageError("--from-report only applies to publish");
-    report = JSON.parse(await readFile9(values["from-report"], "utf8"));
+    report = JSON.parse(await readFile10(values["from-report"], "utf8"));
   } else {
     report = await runEvaluation({ repo, now, config, configPath, values, publisher, log });
   }
@@ -13931,7 +15747,7 @@ ${" ".repeat(21)}${a.limitations}
     const json = `${JSON.stringify(report, null, 2)}
 `;
     if (values.json === "-") process.stdout.write(json);
-    else await writeFile7(values.json, json);
+    else await writeFile8(values.json, json);
   }
   if (values.markdown) await appendFile(values.markdown, renderMarkdown(report));
   if (values.json !== "-") {
@@ -13958,11 +15774,13 @@ async function runEvaluation(input) {
   }
   try {
     const registry = new NpmRegistryClient(registryUrl, recorder ? { recorder } : {});
-    const providers = config.advisoryProviders.map((id) => {
-      if (id === "osv" && !values.metadata) {
+    const pypi = new PypiClient(values.metadata ? registryUrl : process.env.RETIRE_OVERRIDES_PYPI_URL ?? "https://pypi.org", recorder ? { recorder } : {});
+    const makeProvider = (id) => {
+      if (values.metadata) return new SnapshotAdvisoryProvider(registryUrl);
+      if (id === "osv") {
         return new OsvAdvisoryProvider(recorder ? { recorder } : {});
       }
-      if (id === "github" && !values.metadata) {
+      if (id === "github") {
         const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
         return new GitHubAdvisoryProvider({
           ...token ? { token } : {},
@@ -13971,22 +15789,30 @@ async function runEvaluation(input) {
         });
       }
       return new NpmBulkAdvisoryProvider(registryUrl, recorder ? { recorder } : {});
-    });
+    };
+    const configured = config.advisoryProviders;
+    const advisories = configured ? configured.length === 1 ? makeProvider(configured[0]) : new CombinedAdvisoryProvider(configured.map(makeProvider)) : new FirstSupportingProvider([makeProvider("npm"), makeProvider("osv")]);
     const seenNames = /* @__PURE__ */ new Set();
+    const seenPypi = /* @__PURE__ */ new Set();
     const report = await evaluate({
       repo,
       commit: await headCommit(repo),
       now,
       config,
       registry,
-      advisories: providers.length === 1 ? providers[0] : new CombinedAdvisoryProvider(providers),
+      registries: { uv: pypi },
+      advisories,
       adapters: allAdapters(),
       ...packageManagerRegistry ? { packageManagerRegistry } : {},
       externalChanges: publisher ? await publisher.externalChanges() : [],
       ...publisher?.openAlerts ? { alerts: await publisher.openAlerts() } : {},
       log,
-      onGraph: (graph) => {
-        for (const node of graph.nodes.values()) if (node.importer === void 0) seenNames.add(node.name);
+      onGraph: (graph, ecosystem) => {
+        for (const node of graph.nodes.values()) {
+          if (node.importer !== void 0) continue;
+          if (ecosystem === "uv") seenPypi.add(`${node.name}\0${node.version}`);
+          else seenNames.add(node.name);
+        }
       },
       ...input.configPath ? { configPath: input.configPath } : {},
       registryLabel: values.metadata ? "snapshot" : registryUrl,
@@ -13994,6 +15820,10 @@ async function runEvaluation(input) {
     });
     if (recorder) {
       for (const name of seenNames) await registry.getPackage(name).catch(() => void 0);
+      for (const key of seenPypi) {
+        const [name, version] = key.split("\0");
+        await pypi.getVersion(name, version).catch(() => void 0);
+      }
       await recorder.save(values["record-metadata"], now);
     }
     return report;

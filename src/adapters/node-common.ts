@@ -101,7 +101,7 @@ export function packageManagerMismatch(manager: string, installed: string, pinne
   return [];
 }
 
-const SKIP_DIRS = new Set(["node_modules", ".git", ".yarn", "dist", "build", "vendor", "target"]);
+const SKIP_DIRS = new Set(["node_modules", ".git", ".yarn", "dist", "build", "vendor", "target", ".venv", "venv", "__pycache__", ".tox"]);
 
 /** Repository-relative paths of files with one of the given names, skipping dependency folders. */
 export async function findFiles(repo: string, names: Set<string>, rel = ""): Promise<string[]> {

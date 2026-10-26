@@ -6,10 +6,13 @@ import { allAdapters } from "./adapters/index.ts";
 import {
   type AdvisoryProvider,
   CombinedAdvisoryProvider,
+  FirstSupportingProvider,
   GitHubAdvisoryProvider,
   NpmBulkAdvisoryProvider,
+  SnapshotAdvisoryProvider,
 } from "./advisories/providers.ts";
 import { OsvAdvisoryProvider } from "./advisories/osv.ts";
+import { PypiClient } from "./registry/pypi.ts";
 import { ConfigError, loadConfig } from "./config.ts";
 import type { Report } from "./engine/report.ts";
 import { evaluate } from "./engine/run.ts";
@@ -188,11 +191,14 @@ async function runEvaluation(input: {
   }
   try {
     const registry = new NpmRegistryClient(registryUrl, recorder ? { recorder } : {});
-    const providers: AdvisoryProvider[] = config.advisoryProviders.map((id) => {
-      if (id === "osv" && !values.metadata) {
+    const pypi = new PypiClient(values.metadata ? registryUrl : (process.env.RETIRE_OVERRIDES_PYPI_URL ?? "https://pypi.org"), recorder ? { recorder } : {});
+    const makeProvider = (id: "npm" | "github" | "osv"): AdvisoryProvider => {
+      // Snapshots replay every source through the snapshot registry, whatever recorded them.
+      if (values.metadata) return new SnapshotAdvisoryProvider(registryUrl);
+      if (id === "osv") {
         return new OsvAdvisoryProvider(recorder ? { recorder } : {});
       }
-      if (id === "github" && !values.metadata) {
+      if (id === "github") {
         const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
         return new GitHubAdvisoryProvider({
           ...(token ? { token } : {}),
@@ -200,24 +206,35 @@ async function runEvaluation(input: {
           ...(recorder ? { recorder } : {}),
         });
       }
-      // Snapshots always replay through the registry's bulk endpoint, whatever recorded them.
       return new NpmBulkAdvisoryProvider(registryUrl, recorder ? { recorder } : {});
-    });
+    };
+    const configured = config.advisoryProviders;
+    const advisories: AdvisoryProvider = configured
+      ? configured.length === 1
+        ? makeProvider(configured[0]!)
+        : new CombinedAdvisoryProvider(configured.map(makeProvider))
+      : new FirstSupportingProvider([makeProvider("npm"), makeProvider("osv")]);
     const seenNames = new Set<string>();
+    const seenPypi = new Set<string>();
     const report = await evaluate({
       repo,
       commit: await headCommit(repo),
       now,
       config,
       registry,
-      advisories: providers.length === 1 ? providers[0]! : new CombinedAdvisoryProvider(providers),
+      registries: { uv: pypi },
+      advisories,
       adapters: allAdapters(),
       ...(packageManagerRegistry ? { packageManagerRegistry } : {}),
       externalChanges: publisher ? await publisher.externalChanges() : [],
       ...(publisher?.openAlerts ? { alerts: await publisher.openAlerts() } : {}),
       log,
-      onGraph: (graph) => {
-        for (const node of graph.nodes.values()) if (node.importer === undefined) seenNames.add(node.name);
+      onGraph: (graph, ecosystem) => {
+        for (const node of graph.nodes.values()) {
+          if (node.importer !== undefined) continue;
+          if (ecosystem === "uv") seenPypi.add(`${node.name}\0${node.version}`);
+          else seenNames.add(node.name);
+        }
       },
       ...(input.configPath ? { configPath: input.configPath } : {}),
       registryLabel: values.metadata ? "snapshot" : registryUrl,
@@ -226,6 +243,10 @@ async function runEvaluation(input: {
     if (recorder) {
       // Package managers read metadata the engine never asked for; capture it so replay can resolve.
       for (const name of seenNames) await registry.getPackage(name).catch(() => undefined);
+      for (const key of seenPypi) {
+        const [name, version] = key.split("\0") as [string, string];
+        await pypi.getVersion(name, version).catch(() => undefined);
+      }
       await recorder.save(values["record-metadata"] as string, now);
     }
     return report;

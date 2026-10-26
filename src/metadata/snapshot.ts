@@ -10,7 +10,10 @@ import type { RawVersion } from "../registry/registry.ts";
 export interface MetadataSnapshot {
   schemaVersion: 1;
   capturedAt?: string;
+  /** npm registry packages. */
   packages: Record<string, SnapshotPackage>;
+  /** PyPI packages, keyed by normalized name. Dependencies are PEP 508 specifiers (`""` for any version). */
+  pypi?: Record<string, SnapshotPackage>;
   advisories: SnapshotAdvisory[];
   /** Simulated outages, used by tests to prove failures never read as clean results. */
   failures?: {
@@ -36,7 +39,9 @@ export interface SnapshotVersion {
 export interface SnapshotAdvisory {
   id: string;
   package: string;
-  /** Affected branches as node-semver ranges. */
+  /** Registry the package lives in; default npm. */
+  ecosystem?: "npm" | "PyPI";
+  /** Affected branches, as node-semver ranges (npm) or PEP 440 specifier sets (PyPI). */
   ranges: string[];
   severity?: string;
   title?: string;
@@ -59,9 +64,10 @@ export async function readSnapshot(path: string): Promise<MetadataSnapshot> {
 /** Collects every piece of metadata a run reads so it can be saved as a snapshot. */
 export class Recorder {
   private readonly packages = new Map<string, SnapshotPackage>();
+  private readonly pypi = new Map<string, SnapshotPackage>();
   private readonly advisories = new Map<string, SnapshotAdvisory>();
 
-  recordPackage(metadata: PackageMetadata, raw: { versions?: Record<string, RawVersion> }): void {
+  recordPackage(metadata: PackageMetadata, raw: { versions?: Record<string, RawVersion> }, registry: "npm" | "pypi" = "npm"): void {
     const versions: Record<string, SnapshotVersion> = {};
     for (const [v, meta] of Object.entries(metadata.versions)) {
       const entry: SnapshotVersion = {};
@@ -79,17 +85,18 @@ export class Recorder {
     }
     const pkg: SnapshotPackage = { versions, time: metadata.time };
     if (metadata.repository) pkg.repository = metadata.repository;
-    this.packages.set(metadata.name, pkg);
+    (registry === "pypi" ? this.pypi : this.packages).set(metadata.name, pkg);
   }
 
-  recordAdvisories(name: string, advisories: Advisory[]): void {
+  recordAdvisories(name: string, advisories: Advisory[], ecosystem: "npm" | "PyPI" = "npm"): void {
     for (const a of advisories) {
       const entry: SnapshotAdvisory = { id: a.id, package: name, ranges: a.ranges };
+      if (ecosystem === "PyPI") entry.ecosystem = "PyPI";
       if (a.severity) entry.severity = a.severity;
       if (a.title) entry.title = a.title;
       if (a.url) entry.url = a.url;
       if (a.aliases.length > 0) entry.aliases = a.aliases;
-      this.advisories.set(`${name}\0${a.id}`, entry);
+      this.advisories.set(`${ecosystem}\0${name}\0${a.id}`, entry);
     }
   }
 
@@ -99,7 +106,12 @@ export class Recorder {
     const advisories = [...this.advisories.values()].sort(
       (a, b) => a.package.localeCompare(b.package) || a.id.localeCompare(b.id),
     );
-    return { schemaVersion: 1, capturedAt: capturedAt.toISOString(), packages, advisories };
+    const snapshot: MetadataSnapshot = { schemaVersion: 1, capturedAt: capturedAt.toISOString(), packages, advisories };
+    if (this.pypi.size > 0) {
+      snapshot.pypi = {};
+      for (const name of [...this.pypi.keys()].sort()) snapshot.pypi[name] = this.pypi.get(name)!;
+    }
+    return snapshot;
   }
 
   async save(path: string, capturedAt: Date): Promise<void> {

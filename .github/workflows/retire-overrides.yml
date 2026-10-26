@@ -34,6 +34,10 @@ on:
         description: Bun version to install for bun.lock projects (match your CI). Empty skips Bun.
         type: string
         default: ""
+      uv-version:
+        description: uv version for uv.lock projects (match your CI). Empty skips uv.
+        type: string
+        default: ""
     secrets:
       token:
         description: Fine-grained token with Contents, Pull requests and Issues read/write.
@@ -74,6 +78,7 @@ jobs:
           fail-on: ${{ inputs.fail-on }}
           args: ${{ inputs.args }}
           bun-version: ${{ inputs.bun-version }}
+          uv-version: ${{ inputs.uv-version }}
 
   maintain:
     # Scheduled runs always use the default branch (and their payload has no repository object).
@@ -126,3 +131,4 @@ jobs:
           config: ${{ inputs.config }}
           args: ${{ inputs.args }}
           bun-version: ${{ inputs.bun-version }}
+          uv-version: ${{ inputs.uv-version }}

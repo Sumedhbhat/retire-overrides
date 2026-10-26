@@ -34,7 +34,7 @@ export async function evaluate(options: EvaluateOptions): Promise<Report> {
       ...(options.configPath ? { path: options.configPath } : {}),
       minimumReleaseAgeDays: options.config.minimumReleaseAgeDays,
       staleAfterDays: options.config.staleAfterDays,
-      advisoryProviders: options.config.advisoryProviders,
+      advisoryProviders: options.config.advisoryProviders ?? ["default: npm for JavaScript, osv otherwise"],
     },
     metadata: { registry: options.registryLabel, ...(options.snapshotPath ? { snapshot: options.snapshotPath } : {}) },
     projects: [],
@@ -79,7 +79,7 @@ export async function evaluate(options: EvaluateOptions): Promise<Report> {
         let locked: ResolvedGraph | undefined;
         try {
           locked = await adapter.readGraph(project, base.dir);
-          ctx.seen(locked);
+          ctx.seen(locked, project.ecosystem);
         } catch (error) {
           blockers.push(errorMessage(error));
         }
@@ -95,7 +95,7 @@ export async function evaluate(options: EvaluateOptions): Promise<Report> {
             }
           });
         }
-        if (!(resolved instanceof Error)) ctx.seen(resolved);
+        if (!(resolved instanceof Error)) ctx.seen(resolved, project.ecosystem);
         const lockfileStale = locked !== undefined && !(resolved instanceof Error) && !sameResolution(locked, resolved);
         let baselineFindings: Finding[] | Error = new Error("baseline unavailable");
         if (!(resolved instanceof Error)) {

@@ -71,7 +71,26 @@ Resolution:
 - **Refresh:** the adapter deletes the affected packages' blocks from yarn.lock before installing, and both lines re-resolve just those packages. Measured on real repositories, refreshing one package changed only that package's entries: `acorn` in facebook/prop-types (Classic) and `semver` in TypeStrong/ts-node (Yarn 3.4.1). `yarn up -R` was rejected because it links and builds packages.
 - **Snapshot replay:** registry, cache and global folders are isolated per run. Classic fetches each entry's recorded `resolved` URL, so those are pointed at the replay registry, and checksums are refreshed because the replay serves synthetic tarballs.
 
-### npm, pnpm, Bun and Yarn
+### uv (implemented)
+
+| | Supported | Reported as unsupported |
+|---|---|---|
+| Location | `override-dependencies` and `constraint-dependencies` under `[tool.uv]` in the project's pyproject.toml | `build-constraint-dependencies` (build environments only); overrides without a `uv.lock` |
+| Entries | PEP 508 requirements with a PEP 440 specifier (`tar-lite==3.1.4`, `tar-lite>=3.1.4,<4`) | entries with environment markers (`; python_version < "3.11"`), URL and path requirements |
+| Lockfile | `uv.lock` version 1 | other versions (BLOCKED) |
+| Workspaces | every member in the shared `uv.lock`, through `[package.metadata]` requirements | — |
+| Indexes | PyPI | custom indexes (`[[tool.uv.index]]`): metadata is read from PyPI, so results would not match |
+
+Semantics:
+- **Overrides** replace every requirement on a package and are always global. uv has no parent scope. New overrides are exact pins (`name==X`) outside every affected range.
+- **Constraints** only narrow what resolution may pick. uv refuses a constraint outside a parent's range (verified with uv 0.13.0), so a constraint can't force a fix the way an override can. Existing constraints go through the same removal proof, but they are often ordinary policy. Unless retire-overrides created one or `manage` opts it in, it is `REVIEW_NEEDED` and never removed automatically.
+- Python installs exactly one version of each package per environment. Two parents with incompatible ranges are a resolution conflict, not two copies, so the "several release lines" case from npm doesn't arise.
+- Versions and specifiers follow PEP 440. `test/fixtures/pep440-oracle.json` checks the implementation against Python's `packaging`, the reference implementation, on 1,248 cases.
+- A package's declared ranges come from each version's `requires_dist` on PyPI. Requirements that differ by marker or extra are treated as a union, which errs towards "still permits a vulnerable version".
+
+Resolution: `uv lock --no-build`, plus `--upgrade-package <pkg>` for the packages whose locked versions must not be trusted. `--no-build` means only published metadata is used, so nothing is built or run. Pin the uv version with `[tool.uv] required-version` or the action's `uv-version` input; a mismatch is a blocker. Release dates are each version's earliest upload time on PyPI. Advisories come from OSV by default.
+
+### npm, pnpm, Bun, Yarn and uv
 
 - If the pinned package-manager major differs from the installed one, every override in that project is BLOCKED. Enable Corepack (the action does) or install the pinned version.
 - Declared ranges come from the lockfile when it records them (npm), and otherwise from the published manifest in the registry (pnpm).
@@ -81,11 +100,6 @@ Resolution:
 
 Each planned adapter is already registered. For now it only *detects*: when its mechanism is present, the report lists it as unsupported and evaluates nothing. Here is the design each one must follow. The defining rule is that these mechanisms are not equivalent, and every adapter has to be honest about the difference.
 
-### Python / uv: `override-dependencies`, `constraint-dependencies`
-
-- **Overrides** replace declared requirements outright. They are the counterpart of npm overrides and can be removed by the same proof.
-- **Constraints** only narrow what resolution may choose. A constraint is often ordinary policy. Only tool-created constraints (trailers) or ones opted in through `manage` are candidates. Everything else gets REVIEW_NEEDED, never removal.
-- **Resolution:** `uv lock --upgrade-package <pkg>` in the scratch worktree, which never installs. **Graph:** `uv.lock`. **Advisories:** OSV (PyPI ecosystem). **Release dates:** PyPI JSON `upload_time`.
 
 ### Rust / Cargo: `[patch]`, `[replace]`
 

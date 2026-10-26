@@ -93,7 +93,7 @@ export async function evaluateRemoval(
   let advisories: Advisory[];
   let targetMeta: PackageMetadata;
   try {
-    targetMeta = await ctx.package(entry.target.name);
+    targetMeta = await ctx.package(entry.ecosystem, entry.target.name);
     advisories = await ctx.allAdvisories(entry.ecosystem, entry.target.name);
   } catch (error) {
     block("metadata-unavailable", errorMessage(error));
@@ -128,7 +128,7 @@ export async function evaluateRemoval(
     return { report, kept: false, conclusive: [] };
   }
   const after = result.graph;
-  ctx.seen(after);
+  ctx.seen(after, entry.ecosystem);
 
   // 1. Every resolved copy of the package that the override governed, on every path, must be outside
   //    all affected ranges. Copies the override never reached are judged by the vulnerability scan.
@@ -164,7 +164,7 @@ export async function evaluateRemoval(
       const parentLabel = edge.parent.importer !== undefined ? `${edge.parent.importer || "(root)"} (direct)` : `${edge.parent.name}@${edge.parent.version}`;
       let declared: string | undefined;
       try {
-        declared = await ctx.declaredRange(edge.parent, edge.as);
+        declared = await ctx.declaredRange(entry.ecosystem, edge.parent, edge.as);
       } catch (error) {
         block("metadata-unavailable", `cannot read ${parentLabel}'s declared range for ${edge.as}: ${errorMessage(error)}`);
         continue;
@@ -180,7 +180,7 @@ export async function evaluateRemoval(
       }
       // A peer range doesn't pick a version: the copy comes from another edge (checked on its own) or
       // from auto-install, which takes the highest satisfying release. Judge peers by that pick.
-      const peer = await ctx.isPeerEdge(edge.parent, edge.as).catch(() => false);
+      const peer = await ctx.isPeerEdge(entry.ecosystem, edge.parent, edge.as).catch(() => false);
       let permits = permittedVulnerableVersions(spec.range, targetMeta, advisories, sch);
       if (peer) {
         const pick = maxSatisfying(targetMeta, spec.range, ctx.now, sch);
@@ -222,7 +222,7 @@ export async function evaluateRemoval(
   for (const { name, version } of added) {
     const evidence: VersionEvidence = { name, version };
     try {
-      const meta = await ctx.package(name);
+      const meta = await ctx.package(entry.ecosystem, name);
       const published = meta.time[version];
       if (published === undefined) {
         block("release-date-unknown", `no publish time for ${name}@${version}`);
@@ -298,11 +298,11 @@ function summarizeVersions(versions: string[]): string {
 
 /** What the newest release of a parent declares for the dependency, for stale-override issues. */
 async function upstreamContext(ctx: EngineContext, ecosystem: EcosystemId, parent: string, dep: string): Promise<string> {
-  const meta = await ctx.package(parent);
+  const meta = await ctx.package(ecosystem, parent);
   const sch = schemeFor(ecosystem);
   const latest = availableVersions(meta, ctx.now, sch).filter((v) => !sch.isPrerelease(v)).at(-1);
   if (latest === undefined) return `${parent}: no published release found`;
-  const v = meta.versions[latest];
+  const v = await ctx.versionMeta(ecosystem, parent, latest);
   const range = v?.dependencies[dep] ?? v?.optionalDependencies[dep] ?? v?.peerDependencies[dep];
   const published = meta.time[latest] ? ` (published ${meta.time[latest]!.slice(0, 10)})` : "";
   const repo = meta.repository ? `; source: ${meta.repository}` : "";
