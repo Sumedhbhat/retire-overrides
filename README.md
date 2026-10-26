@@ -104,6 +104,23 @@ GitHub requires that longer reference for any reusable workflow; there is no sho
 
 Untrusted PR code never runs with write credentials either way, and resolution never runs install scripts.
 
+#### What resolution can execute
+
+Resolution turns off lifecycle scripts everywhere (`--ignore-scripts`, `YARN_ENABLE_SCRIPTS=false`, `uv lock --no-build`). Some package managers still load code from the repository while they resolve:
+
+| Package manager | Repository code it loads |
+|---|---|
+| pnpm | `.pnpmfile.cjs` hooks |
+| Yarn 2+ | the committed Yarn release named by `yarnPath`, and `.yarnrc.yml` plugins |
+| npm, Bun, uv, Yarn Classic | none beyond configuration files |
+
+That code runs with whatever the job has. The workflows are split so this stays safe:
+
+- PR checks run in `check` mode with no token and no secrets.
+- Only the default-branch `publish` job holds the write credential, and the default branch is trusted code.
+
+If you run the CLI yourself, don't give it write credentials on code you haven't reviewed.
+
 ## What it does
 
 For each project it finds (a manifest plus the lockfile its package manager owns), it does two things.
