@@ -11410,6 +11410,8 @@ function declaredRangeIn(meta, dep) {
 // src/engine/context.ts
 var EngineContext = class {
   options;
+  /** Every project this run evaluates, known before evaluation starts. */
+  projects = [];
   allAdvisoriesCache = /* @__PURE__ */ new Map();
   constructor(options) {
     this.options = options;
@@ -11488,6 +11490,81 @@ function findingKey(f) {
 }
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+// src/engine/alerts.ts
+import { posix as posix5 } from "node:path";
+var HOST_ECOSYSTEMS = {
+  npm: ["npm", "pnpm", "bun", "yarn"],
+  pip: ["uv"],
+  rust: ["cargo"],
+  go: ["go"],
+  maven: ["maven", "gradle"],
+  nuget: ["nuget"]
+};
+function alertRef(a) {
+  return { number: a.number, url: a.url, advisory: a.advisory };
+}
+function alertDir(manifest) {
+  const dir = posix5.dirname(manifest);
+  return dir === "." ? "" : dir;
+}
+function inProject(manifest, projectDir) {
+  const dir = alertDir(manifest);
+  return projectDir === "" || dir === projectDir || dir.startsWith(`${projectDir}/`);
+}
+function samePackage(hostEcosystem, a, b) {
+  if (hostEcosystem !== "pip") return a === b;
+  const norm = (n) => n.toLowerCase().replace(/[-_.]+/g, "-");
+  return norm(a) === norm(b);
+}
+function owningProject(alert, projects) {
+  const owners = HOST_ECOSYSTEMS[alert.hostEcosystem] ?? [];
+  return projects.filter((p) => owners.includes(p.ecosystem) && inProject(alert.manifest, p.dir)).sort((x, y) => y.dir.length - x.dir.length)[0];
+}
+function alertsFor(alerts, projects, ecosystem, projectDir, pkg, advisories) {
+  const ids = new Set(advisories.map((a) => a.toLowerCase()));
+  return alerts.filter(
+    (a) => (HOST_ECOSYSTEMS[a.hostEcosystem] ?? []).includes(ecosystem) && owningProject(a, projects.some((p) => p.ecosystem === ecosystem && p.dir === projectDir) ? projects : [...projects, { ecosystem, dir: projectDir }])?.dir === projectDir && samePackage(a.hostEcosystem, a.package, pkg) && ids.has(a.advisory.toLowerCase())
+  );
+}
+function coverage(alerts, projects, vulnerabilities) {
+  const referenced = /* @__PURE__ */ new Set();
+  for (const v of vulnerabilities) {
+    const ids = [...v.advisories.map((a) => a.id), ...v.instances.flatMap((i) => i.affectedBy)];
+    const matched = alertsFor(alerts, projects, v.ecosystem, v.project, v.package, ids);
+    if (matched.length > 0 && !v.alerts) v.alerts = matched.map(alertRef).sort((x, y) => x.number - y.number);
+    for (const a of matched) referenced.add(a.number);
+  }
+  const out = [];
+  for (const alert of alerts) {
+    if (referenced.has(alert.number)) continue;
+    const ref = {
+      ...alertRef(alert),
+      package: alert.package,
+      manifest: alert.manifest,
+      ...alert.vulnerableRange ? { vulnerableRange: alert.vulnerableRange } : {}
+    };
+    const project = owningProject(alert, projects);
+    if (!project) {
+      out.push({ alert: ref, reason: "unsupported-ecosystem", message: `no implemented ${alert.hostEcosystem} project at ${alert.manifest}; this alert was not evaluated` });
+    } else if (project.blocked || !project.graph) {
+      out.push({ alert: ref, reason: "project-blocked", message: `the ${project.ecosystem} project at ${project.dir || "(root)"} could not be evaluated; see its blockers` });
+    } else {
+      const versions = [...project.graph.nodes.values()].filter((n) => samePackage(alert.hostEcosystem, n.name, alert.package) && n.importer === void 0).map((n) => n.version);
+      if (versions.length === 0) {
+        out.push({ alert: ref, reason: "not-in-graph", message: `${alert.package} is not in the resolved lockfile; the alert may be stale until the host rescans` });
+      } else {
+        const list = [...new Set(versions)].sort().join(", ");
+        out.push({
+          alert: ref,
+          reason: "not-flagged",
+          message: `${alert.package} resolves to ${list}, which the configured advisory data does not flag for ${alert.advisory}${alert.vulnerableRange ? ` (alert range ${alert.vulnerableRange})` : ""}; check for an override or provider disagreement`
+        });
+      }
+    }
+  }
+  return out;
 }
 
 // src/engine/identity.ts
@@ -11688,12 +11765,14 @@ function buildFixChange(ctx, input) {
     advisoryList(v.advisories),
     ""
   ]);
+  const alerts = input.vulnerabilities.flatMap((v) => v.alerts ?? []).sort((a, b) => a.number - b.number);
   const attempts = input.vulnerabilities[0].attempts.map((a) => `- ${a.strategy}: ${a.outcome}${a.reasons.length > 0 ? ` \u2014 ${a.reasons.map((r) => r.message).join("; ")}` : ""}`).join("\n");
   const body = [
     `Security fix: ${input.summary}.`,
     "",
     ...input.details.map((d) => `- ${d}`),
     "",
+    ...alerts.length > 0 ? [...alerts.map((a) => `Fixes Dependabot alert [#${a.number}](${a.url}) (${a.advisory}).`), ""] : [],
     "Every affected copy and dependency path was re-resolved without installing packages or running scripts. After this change no copy is in a known affected range and the audit gains no new findings. Repository CI must still pass.",
     "",
     ...sections,
@@ -12064,6 +12143,10 @@ async function planGroup(ctx, adapter, project, locked, lockedFindings, base, en
     return { report, conclusive: [] };
   }
   report.advisories = advisoryRefs(advisories.filter((a) => advisoryIds.includes(a.id)));
+  if (ctx.options.alerts?.status === "available") {
+    const matched = alertsFor(ctx.options.alerts.alerts, ctx.projects, project.ecosystem, project.dir, group.name, advisoryIds);
+    if (matched.length > 0) report.alerts = matched.map(alertRef).sort((a, b) => a.number - b.number);
+  }
   const deferral = matchExternal(ctx.options.externalChanges ?? [], group.name);
   if (deferral) {
     report.status = "DEFERRED";
@@ -12448,11 +12531,16 @@ async function evaluate(options) {
   if (report.repository.shallow) {
     ctx.log("warning: shallow clone; override history (dates, tool-created markers) may be incomplete. Use fetch-depth: 0.");
   }
+  const evaluated = [];
   const base = await createScratch(options.repo, options.commit);
   try {
+    const detections = [];
     for (const adapter of options.adapters) {
       if (options.config.ecosystems && !options.config.ecosystems.includes(adapter.id)) continue;
-      const detected = await adapter.detect(base.dir);
+      detections.push({ adapter, detected: await adapter.detect(base.dir) });
+    }
+    ctx.projects = detections.filter((d) => isImplemented(d.adapter)).flatMap((d) => d.detected.projects.map((p) => ({ ecosystem: p.ecosystem, dir: p.dir })));
+    for (const { adapter, detected } of detections) {
       report.unsupported.push(...detected.unsupported);
       if (!isImplemented(adapter)) continue;
       for (const project of detected.projects) {
@@ -12500,6 +12588,7 @@ async function evaluate(options) {
           lockfileStale
         });
         const projectReport = report.projects.at(-1);
+        evaluated.push({ ecosystem: project.ecosystem, dir: project.dir, blockers: projectReport.blockers, ...locked ? { graph: locked } : {} });
         if (locked !== void 0) {
           const baseline = { locked, resolved, findings: baselineFindings, lockfileStale };
           for (const entry of entries) {
@@ -12534,6 +12623,16 @@ async function evaluate(options) {
     }
   } finally {
     await base.dispose();
+  }
+  if (options.alerts) {
+    const input = options.alerts;
+    report.alerts = input.status === "available" ? { source: "github-dependabot", status: "available", open: input.alerts.length } : { source: "github-dependabot", status: "unavailable", note: input.reason, open: 0 };
+    report.coverage = input.status === "available" ? coverage(
+      input.alerts,
+      evaluated.map((p) => ({ ecosystem: p.ecosystem, dir: p.dir, blocked: p.blockers.length > 0, ...p.graph ? { graph: p.graph } : {} })),
+      report.vulnerabilities
+    ) : [];
+    if (input.status === "unavailable") ctx.log(`warning: Dependabot alerts unavailable (${input.reason}); alerts were not cross-checked`);
   }
   for (const o of report.overrides) report.summary[o.status]++;
   report.summary.vulnerabilities = report.vulnerabilities.length;
@@ -12896,6 +12995,38 @@ var GitHubPublisher = class {
   async externalChanges() {
     return (await this.pulls()).filter((pr) => pr.user !== null && (BOT_AUTHORS.has(pr.user.login) || /^(dependabot|renovate)\//.test(pr.head.ref))).map((pr) => ({ url: pr.html_url, title: pr.title, branch: pr.head.ref, author: pr.user?.login ?? "bot" }));
   }
+  /**
+   * Open Dependabot alerts. Needs "Dependabot alerts: Read". A token without it (403), or a repository
+   * with alerts turned off (404), yields `unavailable` with the reason: never an empty, clean-looking list.
+   */
+  async openAlerts() {
+    const alerts = [];
+    let url = `${this.apiUrl}${this.repoPath("/dependabot/alerts?state=open&per_page=100")}`;
+    try {
+      while (url !== null) {
+        const response = await this.fetchImpl(url, {
+          headers: {
+            accept: "application/vnd.github+json",
+            authorization: `Bearer ${this.options.token}`,
+            "x-github-api-version": "2022-11-28"
+          }
+        });
+        if (response.status === 403 || response.status === 404) {
+          const detail = (await response.text()).slice(0, 200);
+          return {
+            status: "unavailable",
+            reason: response.status === 403 ? `the token cannot read Dependabot alerts (needs "Dependabot alerts: Read"): ${detail}` : `Dependabot alerts are not enabled for ${this.options.repository}: ${detail}`
+          };
+        }
+        if (!response.ok) return { status: "unavailable", reason: `listing Dependabot alerts returned HTTP ${response.status}` };
+        for (const raw of await response.json()) alerts.push(toHostAlert(raw));
+        url = nextPage(response.headers.get("link"));
+      }
+    } catch (error) {
+      return { status: "unavailable", reason: `listing Dependabot alerts failed: ${String(error)}` };
+    }
+    return { status: "available", alerts };
+  }
   /** Branch rules or classic protection requiring status checks on the base. Auto-merge is only safe with them. */
   async requiredChecks(branch) {
     const checks = /* @__PURE__ */ new Set();
@@ -13124,6 +13255,31 @@ async function repositoryFromRemote(repo) {
   const m = /github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/.exec(url);
   return m?.[1];
 }
+function toHostAlert(raw) {
+  const alert = {
+    number: raw.number,
+    url: raw.html_url,
+    state: raw.state,
+    advisory: raw.security_advisory?.ghsa_id ?? "unknown",
+    package: raw.dependency?.package?.name ?? "unknown",
+    hostEcosystem: raw.dependency?.package?.ecosystem ?? "unknown",
+    manifest: raw.dependency?.manifest_path ?? ""
+  };
+  const range = raw.security_vulnerability?.vulnerable_version_range;
+  if (range) alert.vulnerableRange = range;
+  const patched = raw.security_vulnerability?.first_patched_version?.identifier;
+  if (patched) alert.firstPatched = patched;
+  if (raw.security_advisory?.severity) alert.severity = raw.security_advisory.severity;
+  return alert;
+}
+function nextPage(header) {
+  if (!header) return null;
+  for (const part of header.split(",")) {
+    const m = /<([^>]+)>;\s*rel="next"/.exec(part);
+    if (m) return m[1];
+  }
+  return null;
+}
 
 // src/render/summary.ts
 function renderText(report) {
@@ -13144,7 +13300,8 @@ function renderText(report) {
     }
     for (const v of report.vulnerabilities.filter((v2) => v2.ecosystem === p.ecosystem && v2.project === p.dir)) {
       const ids = v.advisories.map((a) => a.id).join(", ") || v.instances.flatMap((i) => i.affectedBy).join(", ");
-      lines.push(`  vuln ${v.status.padEnd(13)} ${v.package} (${ids})${v.strategy ? ` via ${v.strategy}` : ""}${v.deferredTo ? ` \u2192 ${v.deferredTo}` : ""}`);
+      const alerts = (v.alerts ?? []).map((a) => `#${a.number}`).join(", ");
+      lines.push(`  vuln ${v.status.padEnd(13)} ${v.package} (${ids})${v.strategy ? ` via ${v.strategy}` : ""}${v.deferredTo ? ` \u2192 ${v.deferredTo}` : ""}${alerts ? ` [Dependabot ${alerts}]` : ""}`);
       for (const r of v.reasons) lines.push(`                ${r.code}: ${r.message}`);
     }
   }
@@ -13159,6 +13316,12 @@ function renderText(report) {
   if (report.issues.length > 0) {
     lines.push("\nPlanned issues:");
     for (const i of report.issues) lines.push(`  ${i.title}`);
+  }
+  if (report.alerts?.status === "unavailable") lines.push(`
+Dependabot alerts unavailable: ${report.alerts.note}`);
+  if (report.coverage && report.coverage.length > 0) {
+    lines.push("\nDependabot alerts not acted on:");
+    for (const c of report.coverage) lines.push(`  #${c.alert.number} ${c.alert.package} ${c.alert.advisory} (${c.alert.manifest}) ${c.reason}: ${c.message}`);
   }
   if (report.unsupported.length > 0) {
     lines.push("\nUnsupported (reported, not evaluated):");
@@ -13188,11 +13351,12 @@ function renderMarkdown(report) {
     out.push("No overrides found.", "");
   }
   if (report.vulnerabilities.length > 0) {
-    out.push("| Fix | Package | Advisories | Strategy |", "|---|---|---|---|");
+    out.push("| Fix | Package | Advisories | Strategy | Dependabot |", "|---|---|---|---|---|");
     for (const v of report.vulnerabilities) {
       const ids = v.advisories.map((a) => a.url ? `[${a.id}](${a.url})` : a.id).join(", ");
       const strategy = v.strategy ?? v.reasons.map((r) => escapeCell(r.message)).join("<br>");
-      out.push(`| ${v.status} | ${v.package} | ${ids} | ${strategy} |`);
+      const alerts = (v.alerts ?? []).map((a) => `[#${a.number}](${a.url})`).join(", ") || "\u2014";
+      out.push(`| ${v.status} | ${v.package} | ${ids} | ${strategy} | ${alerts} |`);
     }
     out.push("");
   }
@@ -13204,6 +13368,12 @@ function renderMarkdown(report) {
   if (report.issues.length > 0) {
     out.push("**Planned issues**", "");
     for (const i of report.issues) out.push(`- ${i.title}`);
+    out.push("");
+  }
+  if (report.alerts?.status === "unavailable") out.push(`> **Dependabot alerts unavailable:** ${report.alerts.note}. Alerts were not cross-checked.`, "");
+  if (report.coverage && report.coverage.length > 0) {
+    out.push("**Dependabot alerts not acted on**", "");
+    for (const c of report.coverage) out.push(`- [#${c.alert.number}](${c.alert.url}) \`${c.alert.package}\` ${c.alert.advisory} in \`${c.alert.manifest}\`: ${c.reason}. ${c.message}`);
     out.push("");
   }
   if (report.unsupported.length > 0) {
@@ -13399,6 +13569,7 @@ async function runEvaluation(input) {
       adapters: allAdapters(),
       ...packageManagerRegistry ? { packageManagerRegistry } : {},
       externalChanges: publisher ? await publisher.externalChanges() : [],
+      ...publisher?.openAlerts ? { alerts: await publisher.openAlerts() } : {},
       log,
       onGraph: (graph) => {
         for (const node of graph.nodes.values()) if (node.importer === void 0) seenNames.add(node.name);

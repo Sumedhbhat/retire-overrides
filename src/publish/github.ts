@@ -1,4 +1,5 @@
 import { git } from "../git.ts";
+import type { AlertsInput, HostAlert } from "../engine/alerts.ts";
 import type { ExternalChange } from "../engine/context.ts";
 import { BRANCH_PREFIX, readMarker } from "../engine/identity.ts";
 import type { PlannedChange, PlannedIssue, Report } from "../engine/report.ts";
@@ -117,6 +118,42 @@ export class GitHubPublisher implements Publisher {
     return (await this.pulls())
       .filter((pr) => pr.user !== null && (BOT_AUTHORS.has(pr.user.login) || /^(dependabot|renovate)\//.test(pr.head.ref)))
       .map((pr) => ({ url: pr.html_url, title: pr.title, branch: pr.head.ref, author: pr.user?.login ?? "bot" }));
+  }
+
+  /**
+   * Open Dependabot alerts. Needs "Dependabot alerts: Read". A token without it (403), or a repository
+   * with alerts turned off (404), yields `unavailable` with the reason: never an empty, clean-looking list.
+   */
+  async openAlerts(): Promise<AlertsInput> {
+    const alerts: HostAlert[] = [];
+    let url: string | null = `${this.apiUrl}${this.repoPath("/dependabot/alerts?state=open&per_page=100")}`;
+    try {
+      while (url !== null) {
+        const response = await this.fetchImpl(url, {
+          headers: {
+            accept: "application/vnd.github+json",
+            authorization: `Bearer ${this.options.token}`,
+            "x-github-api-version": "2022-11-28",
+          },
+        });
+        if (response.status === 403 || response.status === 404) {
+          const detail = (await response.text()).slice(0, 200);
+          return {
+            status: "unavailable",
+            reason:
+              response.status === 403
+                ? `the token cannot read Dependabot alerts (needs "Dependabot alerts: Read"): ${detail}`
+                : `Dependabot alerts are not enabled for ${this.options.repository}: ${detail}`,
+          };
+        }
+        if (!response.ok) return { status: "unavailable", reason: `listing Dependabot alerts returned HTTP ${response.status}` };
+        for (const raw of (await response.json()) as RawAlert[]) alerts.push(toHostAlert(raw));
+        url = nextPage(response.headers.get("link"));
+      }
+    } catch (error) {
+      return { status: "unavailable", reason: `listing Dependabot alerts failed: ${String(error)}` };
+    }
+    return { status: "available", alerts };
   }
 
   /** Branch rules or classic protection requiring status checks on the base. Auto-merge is only safe with them. */
@@ -380,4 +417,41 @@ export async function repositoryFromRemote(repo: string): Promise<string | undef
   const url = (await git(repo, ["remote", "get-url", "origin"], { allowFailure: true })).trim();
   const m = /github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/.exec(url);
   return m?.[1];
+}
+
+interface RawAlert {
+  number: number;
+  html_url: string;
+  state: string;
+  dependency?: { package?: { ecosystem?: string; name?: string }; manifest_path?: string };
+  security_advisory?: { ghsa_id?: string; severity?: string };
+  security_vulnerability?: { vulnerable_version_range?: string; first_patched_version?: { identifier?: string } | null };
+}
+
+function toHostAlert(raw: RawAlert): HostAlert {
+  const alert: HostAlert = {
+    number: raw.number,
+    url: raw.html_url,
+    state: raw.state,
+    advisory: raw.security_advisory?.ghsa_id ?? "unknown",
+    package: raw.dependency?.package?.name ?? "unknown",
+    hostEcosystem: raw.dependency?.package?.ecosystem ?? "unknown",
+    manifest: raw.dependency?.manifest_path ?? "",
+  };
+  const range = raw.security_vulnerability?.vulnerable_version_range;
+  if (range) alert.vulnerableRange = range;
+  const patched = raw.security_vulnerability?.first_patched_version?.identifier;
+  if (patched) alert.firstPatched = patched;
+  if (raw.security_advisory?.severity) alert.severity = raw.security_advisory.severity;
+  return alert;
+}
+
+/** The Dependabot alerts endpoint paginates by cursor, so follow `Link: rel="next"`. */
+function nextPage(header: string | null): string | null {
+  if (!header) return null;
+  for (const part of header.split(",")) {
+    const m = /<([^>]+)>;\s*rel="next"/.exec(part);
+    if (m) return m[1]!;
+  }
+  return null;
 }

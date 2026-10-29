@@ -44,6 +44,10 @@ The fixed version is chosen with every advisory for the package in mind, across 
 
 If no published release escapes every advisory, the vulnerability is `BLOCKED` (`no-fixed-version`), and nothing is changed or dismissed.
 
+## Dependabot alerts
+
+When publishing to GitHub with a token that can read Dependabot alerts, the open alerts are an extra input. An alert matches a vulnerability when the ecosystem family (GitHub's `npm` covers npm, pnpm, Bun and Yarn), the project directory, the package and the GHSA ID all agree. Matched alerts appear in the report and in the fix PR body. Every other open alert gets a `coverage` entry explaining why this run didn't act on it, so an alert is never silently ignored. A token without access, or alerts turned off, is reported as `unavailable`, not as an empty list. The tool never dismisses or edits alerts. All fields are additive, so `schemaVersion` stays 1.
+
 ## Identities
 
 | Object | Identity |
@@ -62,6 +66,8 @@ The branch is `retire-overrides/<kind>/<package-slug>-<sha256(identity)[:10]>`. 
 - `projects[]`: manifest, lockfile, package manager (installed and pinned), `blockers`, `lockfileStale`
 - `overrides[]`: `identity`, `selector`, `target`, `scope`, `value`, `intent` (`tool`/`managed`/`keep`/`unknown`), `provenance` (commit, author, date, source), `status`, `technicalStatus`, `reasons[]` (`code`, `message`), and `evidence` (advisories with ranges, copies with paths, parent constraints, introduced findings, changed versions with ages, upstream context)
 - `kept[]`: overrides on the keep list
-- `vulnerabilities[]`: `status` (`PROPOSED`/`DEFERRED`/`REVIEW_NEEDED`/`BLOCKED`), `strategy`, `attempts[]`, `advisories`, `instances`
+- `vulnerabilities[]`: `status` (`PROPOSED`/`DEFERRED`/`REVIEW_NEEDED`/`BLOCKED`), `strategy`, `attempts[]`, `advisories`, `instances`, and `alerts[]` (`number`, `url`, `advisory`) when host alerts were read
+- `alerts` (only when a publisher supplied host alerts): `source`, `status` (`available`/`unavailable`), `note` (why they couldn't be read), `open`
+- `coverage[]` (only with host alerts): every open alert no vulnerability accounts for, with `reason` (`unsupported-ecosystem`, `project-blocked`, `not-in-graph`, `not-flagged`) and a message
 - `changes[]`: everything needed to open a PR on any host: `branch`, `title`, `body`, `commitMessage`, `labels`, `autoMerge`, `autoMergeBlockers`, `baseCommit`, `files`, `patch`
 - `issues[]`, `unsupported[]`, `conclusive[]` (group keys evaluated without blockers; publishers close their own stale PRs and issues only for these), `summary`

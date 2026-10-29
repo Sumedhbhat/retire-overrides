@@ -32,6 +32,11 @@ export class FakeGitHub {
   autoMerge: Array<{ id: string; body: string }> = [];
   comments: Array<{ number: number; body: string }> = [];
   calls: string[] = [];
+  /** Raw Dependabot alerts served by the alerts endpoint; `alertsStatus` simulates 403/404. */
+  alerts: unknown[] = [];
+  alertsStatus = 200;
+  /** Alerts per page, to exercise cursor pagination. */
+  alertsPageSize = 100;
   private next = 1;
 
   constructor(baseSha: string) {
@@ -70,6 +75,16 @@ export class FakeGitHub {
       const vars = body.variables as { id: string; body: string };
       this.autoMerge.push({ id: vars.id, body: vars.body });
       return json(200, { data: {} });
+    }
+    if (method === "GET" && path === "/dependabot/alerts") {
+      if (this.alertsStatus !== 200) return json(this.alertsStatus, { message: "Resource not accessible by integration" });
+      const after = Number(url.searchParams.get("after") ?? "0");
+      const page = this.alerts.slice(after, after + this.alertsPageSize);
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (after + this.alertsPageSize < this.alerts.length) {
+        headers.link = `<https://api.github.test/repos/owner/repo/dependabot/alerts?state=open&after=${after + this.alertsPageSize}>; rel="next"`;
+      }
+      return new Response(JSON.stringify(page), { status: 200, headers });
     }
     if (method === "GET" && path === "") return json(200, { default_branch: "main" });
     if (method === "GET" && path === "/git/ref/heads/main") return json(200, { object: { sha: this.baseSha } });
@@ -135,5 +150,17 @@ export class FakeGitHub {
       return json(200, issue);
     }
     return json(404, { message: `fake GitHub has no route for ${method} ${url.pathname}` });
+  };
+}
+
+/** A Dependabot alert as the REST API returns it. */
+export function rawAlert(number: number, pkg: string, ghsa: string, manifest = "package-lock.json", range = "< 3.1.4"): unknown {
+  return {
+    number,
+    html_url: `https://github.test/owner/repo/security/dependabot/${number}`,
+    state: "open",
+    dependency: { package: { ecosystem: "npm", name: pkg }, manifest_path: manifest },
+    security_advisory: { ghsa_id: ghsa, severity: "high" },
+    security_vulnerability: { vulnerable_version_range: range, first_patched_version: { identifier: "3.1.4" } },
   };
 }

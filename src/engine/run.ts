@@ -1,11 +1,12 @@
 import { isImplemented } from "../adapters/adapter.ts";
 import { createScratch, isDirty, isShallow, withScratch } from "../git.ts";
 import { sameResolution } from "../graph.ts";
-import type { ResolvedGraph } from "../types.ts";
+import type { EcosystemId, ResolvedGraph } from "../types.ts";
 import { EngineContext, type EngineOptions, errorMessage, type Finding } from "./context.ts";
 import { planFixes } from "./fixes.ts";
 import { type Baseline, evaluateRemoval, registryOption } from "./removal.ts";
 import { REPORT_SCHEMA_VERSION, type Report } from "./report.ts";
+import { coverage } from "./alerts.ts";
 import { toolVersion } from "../version.ts";
 
 export interface EvaluateOptions extends EngineOptions {
@@ -50,11 +51,17 @@ export async function evaluate(options: EvaluateOptions): Promise<Report> {
     ctx.log("warning: shallow clone; override history (dates, tool-created markers) may be incomplete. Use fetch-depth: 0.");
   }
 
+  const evaluated: Array<{ ecosystem: EcosystemId; dir: string; blockers: string[]; graph?: ResolvedGraph }> = [];
   const base = await createScratch(options.repo, options.commit);
   try {
+    // Detect every project first, so alerts can be attributed to the deepest project that owns them.
+    const detections: Array<{ adapter: (typeof options.adapters)[number]; detected: Awaited<ReturnType<(typeof options.adapters)[number]["detect"]>> }> = [];
     for (const adapter of options.adapters) {
       if (options.config.ecosystems && !options.config.ecosystems.includes(adapter.id)) continue;
-      const detected = await adapter.detect(base.dir);
+      detections.push({ adapter, detected: await adapter.detect(base.dir) });
+    }
+    ctx.projects = detections.filter((d) => isImplemented(d.adapter)).flatMap((d) => d.detected.projects.map((p) => ({ ecosystem: p.ecosystem, dir: p.dir })));
+    for (const { adapter, detected } of detections) {
       report.unsupported.push(...detected.unsupported);
       if (!isImplemented(adapter)) continue;
 
@@ -104,6 +111,7 @@ export async function evaluate(options: EvaluateOptions): Promise<Report> {
           lockfileStale,
         });
         const projectReport = report.projects.at(-1)!;
+        evaluated.push({ ecosystem: project.ecosystem, dir: project.dir, blockers: projectReport.blockers, ...(locked ? { graph: locked } : {}) });
 
         if (locked !== undefined) {
           const baseline: Baseline = { locked, resolved, findings: baselineFindings, lockfileStale };
@@ -140,6 +148,23 @@ export async function evaluate(options: EvaluateOptions): Promise<Report> {
     }
   } finally {
     await base.dispose();
+  }
+
+  if (options.alerts) {
+    const input = options.alerts;
+    report.alerts =
+      input.status === "available"
+        ? { source: "github-dependabot", status: "available", open: input.alerts.length }
+        : { source: "github-dependabot", status: "unavailable", note: input.reason, open: 0 };
+    report.coverage =
+      input.status === "available"
+        ? coverage(
+            input.alerts,
+            evaluated.map((p) => ({ ecosystem: p.ecosystem, dir: p.dir, blocked: p.blockers.length > 0, ...(p.graph ? { graph: p.graph } : {}) })),
+            report.vulnerabilities,
+          )
+        : [];
+    if (input.status === "unavailable") ctx.log(`warning: Dependabot alerts unavailable (${input.reason}); alerts were not cross-checked`);
   }
 
   for (const o of report.overrides) report.summary[o.status]++;
