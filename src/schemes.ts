@@ -1,4 +1,5 @@
 import semver from "semver";
+import { PEP440 } from "./pep440.ts";
 import type { EcosystemId } from "./types.ts";
 
 /**
@@ -20,6 +21,8 @@ export interface VersionScheme {
   interval(bounds: { gte?: string; lt?: string; lte?: string }): string;
   /** A range matching exactly one version. */
   exact(version: string): string;
+  /** Moves an existing requirement to a new version, keeping its operator style where possible. */
+  bump(existing: string, version: string): string;
 }
 
 const LOOSE = { includePrerelease: true } as const;
@@ -53,9 +56,13 @@ export const SEMVER: VersionScheme = {
     return parts.length > 0 ? parts.join(" ") : "*";
   },
   exact: (v) => v,
+  bump(existing, version) {
+    const simple = /^\s*(\^|~|>=|=)?\s*v?\d+\.\d+\.\d+\S*\s*$/.exec(existing);
+    return simple === null ? `^${version}` : `${simple[1] ?? ""}${version}`;
+  },
 };
 
-const schemes = new Map<EcosystemId, VersionScheme>();
+const schemes = new Map<EcosystemId, VersionScheme>([["uv", PEP440]]);
 
 export function registerScheme(ecosystem: EcosystemId, scheme: VersionScheme): void {
   schemes.set(ecosystem, scheme);

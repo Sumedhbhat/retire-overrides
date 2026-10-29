@@ -55,15 +55,6 @@ class PlannedAdapter implements EcosystemAdapter {
 
 export const plannedAdapters: EcosystemAdapter[] = [
   new PlannedAdapter(
-    "uv",
-    "`override-dependencies` and `constraint-dependencies` under [tool.uv]",
-    "Constraints only narrow what resolution may pick; overrides replace declared requirements. Ordinary constraints are never removed blindly.",
-    [
-      { files: ["pyproject.toml"], pattern: /^\s*override-dependencies\s*=/m, mechanism: "uv `override-dependencies`" },
-      { files: ["pyproject.toml"], pattern: /^\s*constraint-dependencies\s*=/m, mechanism: "uv `constraint-dependencies`" },
-    ],
-  ),
-  new PlannedAdapter(
     "cargo",
     "[patch.*] and [replace] in Cargo.toml, plus dependency version requirements",
     "[patch] replaces a source; it is not a general way to force a registry version, so a plain lockfile update is preferred.",

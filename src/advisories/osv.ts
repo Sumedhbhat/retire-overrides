@@ -117,7 +117,7 @@ export class OsvAdvisoryProvider implements AdvisoryProvider {
       result.set(name, this.toAdvisories(name, osvEcosystem, vulns, scheme, versions.get(name) ?? []));
     }
 
-    for (const [name, list] of result) this.recorder?.recordAdvisories(name, list);
+    for (const [name, list] of result) this.recorder?.recordAdvisories(name, list, osvEcosystem === "PyPI" ? "PyPI" : "npm");
     return result;
   }
 

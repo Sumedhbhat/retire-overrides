@@ -18,7 +18,7 @@ It ships as three things that share one engine:
 | pnpm | **Implemented** | `overrides` in pnpm-workspace.yaml (pnpm 10+) or `pnpm.overrides` in package.json (pnpm ≤ 10), chosen by the pinned pnpm version |
 | Bun | **Implemented** | `overrides`/`resolutions` in package.json with bun.lock. Bun 1.4+ honors parent-scoped and version-selected keys; Bun 1.3 honors only global keys |
 | Yarn | **Implemented** | `resolutions` in package.json with yarn.lock. Classic (1.x) matches keys as whole-path globs; Yarn 2+ honors `pkg` and `parent/pkg` (descriptor keys such as `pkg@range` are reported, not evaluated) |
-| Python / uv | Planned | `override-dependencies`, `constraint-dependencies` |
+| Python / uv | **Implemented** | `override-dependencies` and `constraint-dependencies` under [tool.uv], with uv.lock. Ordinary constraints are never removed unless opted in |
 | Rust / Cargo | Planned | `[patch]`, `[replace]` |
 | Go | Planned | `replace`, raised `require` |
 | Gradle | Planned | constraints, strict/forced versions, resolution rules |
@@ -55,9 +55,10 @@ jobs:
         with:
           token: ${{ secrets.RETIRE_OVERRIDES_TOKEN }}
           # bun-version: 1.3.0      # Bun projects: the version your CI uses
+          # uv-version: 0.13.0       # uv projects: the version your CI uses
 ```
 
-That single step checks out the repository with full history, sets up Node (and Bun when `bun-version` is set), and then:
+That single step checks out the repository with full history, sets up Node (and Bun or uv when `bun-version` or `uv-version` is set), and then:
 
 | Trigger | Mode | What happens |
 |---|---|---|
@@ -146,7 +147,7 @@ If Dependabot or Renovate already has an open PR touching the package, the fix i
 
 Overrides on the `keep` list are reported as kept and never evaluated.
 
-Advisory data comes from the npm registry's bulk advisory endpoint by default. `advisoryProviders` can add [OSV](https://osv.dev) (`osv`, which covers every ecosystem) and the GitHub Advisory Database (`github`). When several are configured, their answers are merged by advisory ID and the affected ranges are combined, so a disagreement counts as vulnerable. If any configured source fails, the run is BLOCKED rather than clean.
+By default, advisory data comes from the npm registry's bulk advisory endpoint for JavaScript projects and from [OSV](https://osv.dev) for everything else. Setting `advisoryProviders` replaces that default. It can name `npm`, `osv` (which covers every ecosystem) and the GitHub Advisory Database (`github`). When several are configured, their answers are merged by advisory ID and the affected ranges are combined, so a disagreement counts as vulnerable. If any configured source fails, the run is BLOCKED rather than clean.
 
 [docs/how-it-works.md](docs/how-it-works.md) covers the exact rules, the evidence each status records, and the JSON report.
 

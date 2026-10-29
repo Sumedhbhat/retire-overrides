@@ -130,8 +130,6 @@ export function chooseFixedVersion(input: {
 }
 
 /** Keeps the operator style of an existing spec when bumping it, e.g. `~1.2.0` → `~1.4.1`. */
-export function bumpSpec(existing: string, version: string): string {
-  const simple = /^\s*(\^|~|>=|=)?\s*v?\d+\.\d+\.\d+\S*\s*$/.exec(existing);
-  if (simple === null) return `^${version}`;
-  return `${simple[1] ?? ""}${version}`;
+export function bumpSpec(existing: string, version: string, scheme: VersionScheme = SEMVER): string {
+  return scheme.bump(existing, version);
 }

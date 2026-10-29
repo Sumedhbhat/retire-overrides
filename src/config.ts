@@ -21,7 +21,8 @@ export interface Config {
   keep: EntryMatcher[];
   /** Explicit opt-in: existing overrides this tool did not create, which it may remove automatically. */
   manage: EntryMatcher[];
-  advisoryProviders: Array<"npm" | "github" | "osv">;
+  /** Advisory sources, merged. When unset: the npm registry for JavaScript ecosystems, OSV for the rest. */
+  advisoryProviders?: Array<"npm" | "github" | "osv">;
   ecosystems?: EcosystemId[];
   autoMerge: boolean;
   mergeMethod: "squash" | "merge" | "rebase";
@@ -35,7 +36,6 @@ export const DEFAULT_CONFIG: Config = {
   staleAfterDays: 90,
   keep: [],
   manage: [],
-  advisoryProviders: ["npm"],
   autoMerge: true,
   mergeMethod: "squash",
   labels: ["dependencies", "security"],

@@ -12,6 +12,11 @@ export class MetadataUnavailableError extends Error {
 export interface RegistryClient {
   /** Full metadata for a package. Throws MetadataUnavailableError when it cannot be fetched. */
   getPackage(name: string): Promise<PackageMetadata>;
+  /**
+   * One version's declared dependencies, for registries whose package documents omit them (PyPI).
+   * When absent, `getPackage(name).versions[version]` is used.
+   */
+  getVersion?(name: string, version: string): Promise<PackageVersionMetadata | undefined>;
 }
 
 export type FetchLike = typeof fetch;

@@ -98,7 +98,7 @@ async function planGroup(
   let advisories: Advisory[];
   let meta: PackageMetadata;
   try {
-    meta = await ctx.package(group.name);
+    meta = await ctx.package(project.ecosystem, group.name);
     advisories = await ctx.allAdvisories(project.ecosystem, group.name);
   } catch (error) {
     report.reasons.push({ code: "metadata-unavailable", message: errorMessage(error) });
@@ -231,7 +231,7 @@ async function verify(input: VerifyInput, candidate: Candidate): Promise<Verdict
     verdict.reasons.push({ code: "resolution-failed", message: tail(outcome.message, 6) });
     return verdict;
   }
-  ctx.seen(outcome.graph);
+  ctx.seen(outcome.graph, project.ecosystem);
   const still = instancesOf(outcome.graph, input.name).filter((i) => affectingAdvisories(i.version, input.advisories, schemeFor(project.ecosystem)).length > 0);
   for (const i of still) {
     verdict.reasons.push({
@@ -248,7 +248,7 @@ async function verify(input: VerifyInput, candidate: Candidate): Promise<Verdict
   }
   for (const { name, version } of addedVersions(input.base, outcome.graph)) {
     const evidence: VersionEvidence = { name, version };
-    const published = await ctx.package(name).then((m) => m.time[version]).catch(() => undefined);
+    const published = await ctx.package(project.ecosystem, name).then((m) => m.time[version]).catch(() => undefined);
     if (published === undefined) {
       verdict.blockers.push(`release date of ${name}@${version} is unknown`);
     } else {
@@ -359,7 +359,7 @@ async function normalFix(
     async apply(dir) {
       for (const b of bumps) {
         const spec = (await adapter.directSpec(project, dir, b.importer, b.name)) ?? `^${b.from}`;
-        await adapter.setDependencySpec(project, dir, b.importer, b.name, bumpSpec(spec, b.to));
+        await adapter.setDependencySpec(project, dir, b.importer, b.name, bumpSpec(spec, b.to, schemeFor(project.ecosystem)));
       }
       return [...new Set([...refresh, ...bumps.map((b) => b.name)])];
     },
@@ -374,12 +374,12 @@ async function fixEdge(
   wanted: (version: string) => Promise<boolean>,
   depth: number,
 ): Promise<Step[] | null> {
-  const childMeta = await ctx.package(edge.child.name);
+  const childMeta = await ctx.package(ecosystem, edge.child.name);
   // A replacement parent must not bring its own known vulnerability.
   const childAdvisories = await ctx.allAdvisories(ecosystem, edge.child.name);
   const sch = schemeFor(ecosystem);
   const ok = async (v: string) => !childAdvisories.some((a) => isAffectedBy(v, a, sch)) && (await wanted(v));
-  const declared = await ctx.declaredRange(edge.parent, edge.as);
+  const declared = await ctx.declaredRange(ecosystem, edge.parent, edge.as);
   const spec = declared === undefined ? null : parseSpec(edge.as, declared, sch);
   if (spec !== null) {
     const best = maxSatisfying(childMeta, spec.range, ctx.now, sch);
@@ -400,9 +400,9 @@ async function fixEdge(
     return null;
   }
   if (depth >= MAX_PARENT_DEPTH) return null;
-  const parentMeta = await ctx.package(edge.parent.name);
+  const parentMeta = await ctx.package(ecosystem, edge.parent.name);
   const parentOk = async (pv: string): Promise<boolean> => {
-    const range = declaredRangeIn(parentMeta.versions[pv], edge.as);
+    const range = declaredRangeIn(await ctx.versionMeta(ecosystem, edge.parent.name, pv), edge.as);
     if (range === undefined) return true;
     const s = parseSpec(edge.as, range, sch);
     if (s === null) return false;

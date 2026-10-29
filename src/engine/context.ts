@@ -4,7 +4,7 @@ import type { Config } from "../config.ts";
 import { versionsByName } from "../graph.ts";
 import type { RegistryClient } from "../registry/registry.ts";
 import { declaredRangeIn } from "../registry/registry.ts";
-import type { Advisory, EcosystemId, GraphNode, PackageMetadata, ResolvedGraph } from "../types.ts";
+import type { Advisory, EcosystemId, GraphNode, PackageMetadata, PackageVersionMetadata, ResolvedGraph } from "../types.ts";
 import { schemeFor } from "../schemes.ts";
 import { affectingAdvisories } from "../versions.ts";
 import type { AlertsInput } from "./alerts.ts";
@@ -23,7 +23,10 @@ export interface EngineOptions {
   commit: string;
   now: Date;
   config: Config;
+  /** Registry for JavaScript ecosystems. */
   registry: RegistryClient;
+  /** Registries for other ecosystems, e.g. `{ uv: pypiClient }`. */
+  registries?: Partial<Record<EcosystemId, RegistryClient>>;
   advisories: AdvisoryProvider;
   adapters: EcosystemAdapter[];
   /** Registry URL handed to package managers (snapshot replay); undefined uses the repository's own configuration. */
@@ -33,7 +36,7 @@ export interface EngineOptions {
   alerts?: AlertsInput;
   log?: (message: string) => void;
   /** Called with every graph read, so a recorder can capture metadata for replay. */
-  onGraph?: (graph: ResolvedGraph) => void;
+  onGraph?: (graph: ResolvedGraph, ecosystem: EcosystemId) => void;
 }
 
 export interface Finding {
@@ -64,8 +67,19 @@ export class EngineContext {
     this.options.log?.(message);
   }
 
-  package(name: string): Promise<PackageMetadata> {
-    return this.options.registry.getPackage(name);
+  registryFor(ecosystem: EcosystemId): RegistryClient {
+    return this.options.registries?.[ecosystem] ?? this.options.registry;
+  }
+
+  package(ecosystem: EcosystemId, name: string): Promise<PackageMetadata> {
+    return this.registryFor(ecosystem).getPackage(name);
+  }
+
+  /** One version's metadata, fetched separately when the registry needs it. */
+  async versionMeta(ecosystem: EcosystemId, name: string, version: string): Promise<PackageVersionMetadata | undefined> {
+    const registry = this.registryFor(ecosystem);
+    if (registry.getVersion) return registry.getVersion(name, version);
+    return (await registry.getPackage(name)).versions[version];
   }
 
   /** Every known advisory for a package, across all of its published versions. */
@@ -74,7 +88,7 @@ export class EngineContext {
     let cached = this.allAdvisoriesCache.get(key);
     if (cached === undefined) {
       cached = (async () => {
-        const meta = await this.package(name);
+        const meta = await this.package(ecosystem, name);
         const answer = await this.options.advisories.advisoriesFor(ecosystem, new Map([[name, Object.keys(meta.versions)]]), { allVersions: true });
         return answer.get(name) ?? [];
       })();
@@ -100,24 +114,23 @@ export class EngineContext {
   }
 
   /** Declared range of `dep` in a node: from the lockfile when recorded, else from the published manifest. */
-  async declaredRange(node: GraphNode, dep: string): Promise<string | undefined> {
+  async declaredRange(ecosystem: EcosystemId, node: GraphNode, dep: string): Promise<string | undefined> {
     const local = node.declared?.[dep];
     if (local !== undefined) return local;
     if (node.importer !== undefined) return undefined;
-    const meta = await this.package(node.name);
-    return declaredRangeIn(meta.versions[node.version], dep);
+    return declaredRangeIn(await this.versionMeta(ecosystem, node.name, node.version), dep);
   }
 
   /** Whether `dep` is only a peer of the node (peers don't choose versions; another edge or auto-install does). */
-  async isPeerEdge(node: GraphNode, dep: string): Promise<boolean> {
+  async isPeerEdge(ecosystem: EcosystemId, node: GraphNode, dep: string): Promise<boolean> {
     if (node.importer !== undefined) return false;
     if (node.peers !== undefined) return node.peers.has(dep);
-    const meta = (await this.package(node.name)).versions[node.version];
+    const meta = await this.versionMeta(ecosystem, node.name, node.version);
     return meta !== undefined && dep in meta.peerDependencies && !(dep in meta.dependencies) && !(dep in meta.optionalDependencies);
   }
 
-  seen(graph: ResolvedGraph): void {
-    this.options.onGraph?.(graph);
+  seen(graph: ResolvedGraph, ecosystem: EcosystemId): void {
+    this.options.onGraph?.(graph, ecosystem);
   }
 }
 

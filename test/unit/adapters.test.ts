@@ -147,7 +147,7 @@ describe("planned adapters", () => {
       "yarn.lock": "",
     });
     const found = (await Promise.all(plannedAdapters.map((a) => a.detect(dir)))).flatMap((r) => r.unsupported);
-    assert.deepEqual(found.map((u) => u.ecosystem).sort(), ["cargo", "go", "gradle", "maven", "nuget", "uv", "uv"]);
+    assert.deepEqual(found.map((u) => u.ecosystem).sort(), ["cargo", "go", "gradle", "maven", "nuget"]);
     assert.ok(found.every((u) => /planned, not implemented/.test(u.message)));
   });
 });

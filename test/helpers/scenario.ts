@@ -3,7 +3,9 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { NpmBulkAdvisoryProvider } from "../../src/advisories/providers.ts";
+import { SnapshotAdvisoryProvider } from "../../src/advisories/providers.ts";
+import { UvAdapter } from "../../src/adapters/uv/uv.ts";
+import { PypiClient } from "../../src/registry/pypi.ts";
 import { allAdapters } from "../../src/adapters/index.ts";
 import type { ImplementedAdapter, Project } from "../../src/adapters/adapter.ts";
 import { BunAdapter } from "../../src/adapters/bun/bun.ts";
@@ -20,7 +22,7 @@ import { startSnapshotRegistry } from "../../src/metadata/server.ts";
 import type { MetadataSnapshot } from "../../src/metadata/snapshot.ts";
 import { NpmRegistryClient } from "../../src/registry/registry.ts";
 
-export type Manager = "npm" | "pnpm" | "bun" | "yarn";
+export type Manager = "npm" | "pnpm" | "bun" | "yarn" | "uv";
 
 export interface FixtureRepo {
   dir: string;
@@ -57,13 +59,7 @@ export async function fixtureRepo(manager: Manager, files: Record<string, string
     async lock(snapshot, at, refresh = []) {
       const server = await startSnapshotRegistry(snapshot, { now: new Date(at) });
       try {
-        const adapters: Record<Manager, ImplementedAdapter> = {
-          npm: new NpmAdapter(),
-          pnpm: new PnpmAdapter(),
-          bun: new BunAdapter(),
-          yarn: new YarnAdapter(),
-        };
-        const adapter = adapters[manager];
+        const adapter = adapterFor(manager);
         const project = await detectProject(adapter, dir);
         await adapter.resolve(project, dir, { refresh, registry: server.url });
       } finally {
@@ -90,7 +86,8 @@ export async function fixtureRepo(manager: Manager, files: Record<string, string
           now: clock,
           config: { ...DEFAULT_CONFIG, ...config },
           registry: new NpmRegistryClient(server.url),
-          advisories: new NpmBulkAdvisoryProvider(server.url),
+          registries: { uv: new PypiClient(server.url) },
+          advisories: new SnapshotAdvisoryProvider(server.url),
           adapters: allAdapters(),
           packageManagerRegistry: server.url,
           externalChanges: external,
@@ -107,7 +104,21 @@ export async function fixtureRepo(manager: Manager, files: Record<string, string
   return repo;
 }
 
+function adapterFor(manager: Manager): ImplementedAdapter {
+  return {
+    npm: () => new NpmAdapter(),
+    pnpm: () => new PnpmAdapter(),
+    bun: () => new BunAdapter(),
+    yarn: () => new YarnAdapter(),
+    uv: () => new UvAdapter(),
+  }[manager]();
+}
+
 async function detectProject(adapter: ImplementedAdapter, dir: string): Promise<Project> {
+  if (adapter.id === "uv") {
+    const installed = /uv (\S+)/.exec((await run("uv", ["--version"], { cwd: dir })).stdout)![1]!;
+    return { ecosystem: "uv", dir: "", manifest: "pyproject.toml", lockfile: "uv.lock", packageManager: { name: "uv", installed } };
+  }
   const manifest = JSON.parse(await readFile(join(dir, "package.json"), "utf8")) as Record<string, unknown>;
   const installed = (await run(adapter.id, ["--version"], { cwd: dir, env: { npm_config_registry: undefined } })).stdout.trim().split("\n").at(-1)!;
   const pinned = typeof manifest.packageManager === "string" ? /@([^+]+)/.exec(manifest.packageManager)?.[1] : undefined;
@@ -143,4 +154,5 @@ export const LOCKFILES: Record<Manager, string> = {
   pnpm: "pnpm-lock.yaml",
   bun: "bun.lock",
   yarn: "yarn.lock",
+  uv: "uv.lock",
 };

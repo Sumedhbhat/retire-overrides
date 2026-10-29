@@ -36,13 +36,17 @@ export function splitBranches(range: string): string[] {
 
 /** The npm registry's bulk advisory endpoint, which is what `npm audit` uses. Needs no credentials. */
 export class NpmBulkAdvisoryProvider implements AdvisoryProvider {
-  readonly id = "npm";
+  readonly id: string = "npm";
   private readonly baseUrl: string;
   private readonly fetchImpl: FetchLike;
   private readonly recorder: Recorder | undefined;
 
-  constructor(registryUrl: string, options: { fetch?: FetchLike; recorder?: Recorder } = {}) {
+  /** Extra query string, used by the snapshot provider to name the ecosystem. */
+  private readonly query: string;
+
+  constructor(registryUrl: string, options: { fetch?: FetchLike; recorder?: Recorder; query?: string } = {}) {
     this.baseUrl = registryUrl.replace(/\/+$/, "");
+    this.query = options.query ?? "";
     this.fetchImpl = options.fetch ?? fetch;
     this.recorder = options.recorder;
   }
@@ -69,7 +73,7 @@ export class NpmBulkAdvisoryProvider implements AdvisoryProvider {
   }
 
   private async post(body: Record<string, string[]>): Promise<Record<string, RawBulkEntry[]>> {
-    const url = `${this.baseUrl}/-/npm/v1/security/advisories/bulk`;
+    const url = `${this.baseUrl}/-/npm/v1/security/advisories/bulk${this.query}`;
     let response: Response;
     try {
       response = await this.fetchImpl(url, {
@@ -126,6 +130,30 @@ function toAdvisory(name: string, entry: RawBulkEntry): Advisory {
   if (entry.title) advisory.title = entry.title;
   if (entry.url) advisory.url = entry.url;
   return advisory;
+}
+
+/**
+ * Advisories replayed from a metadata snapshot through the snapshot registry. Covers every ecosystem
+ * in the snapshot, so replays and tests use one provider for npm and PyPI alike.
+ */
+export class SnapshotAdvisoryProvider implements AdvisoryProvider {
+  readonly id = "snapshot";
+  private readonly url: string;
+  private readonly options: { fetch?: FetchLike; recorder?: Recorder };
+
+  constructor(registryUrl: string, options: { fetch?: FetchLike; recorder?: Recorder } = {}) {
+    this.url = registryUrl;
+    this.options = options;
+  }
+
+  supports(ecosystem: EcosystemId): boolean {
+    return ecosystem !== "go" && ecosystem !== "cargo" && ecosystem !== "gradle" && ecosystem !== "maven" && ecosystem !== "nuget";
+  }
+
+  advisoriesFor(ecosystem: EcosystemId, versions: Map<string, string[]>): Promise<Map<string, Advisory[]>> {
+    const query = ecosystem === "uv" ? "?ecosystem=PyPI" : "";
+    return new NpmBulkAdvisoryProvider(this.url, { ...this.options, query }).advisoriesFor(ecosystem, versions);
+  }
 }
 
 /** GitHub's global advisory database. Needs a token for reasonable rate limits. */
@@ -267,4 +295,28 @@ export class CombinedAdvisoryProvider implements AdvisoryProvider {
 
 function canonicalId(advisory: Advisory): string {
   return advisory.id.toLowerCase();
+}
+
+/**
+ * For each ecosystem, uses the first provider that covers it. This is the default when the
+ * configuration names no providers: the npm registry for JavaScript, OSV for everything else.
+ */
+export class FirstSupportingProvider implements AdvisoryProvider {
+  readonly id: string;
+  private readonly providers: AdvisoryProvider[];
+
+  constructor(providers: AdvisoryProvider[]) {
+    this.providers = providers;
+    this.id = providers.map((p) => p.id).join("|");
+  }
+
+  supports(ecosystem: EcosystemId): boolean {
+    return this.providers.some((p) => p.supports(ecosystem));
+  }
+
+  advisoriesFor(ecosystem: EcosystemId, versions: Map<string, string[]>): Promise<Map<string, Advisory[]>> {
+    const provider = this.providers.find((p) => p.supports(ecosystem));
+    if (!provider) throw new AdvisoryDataUnavailableError(this.id, `no configured provider covers ${ecosystem}`);
+    return provider.advisoriesFor(ecosystem, versions);
+  }
 }
