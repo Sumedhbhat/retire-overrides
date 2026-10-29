@@ -19,8 +19,9 @@ manage:
   - package: tar-lite
     ecosystem: npm
 
-# Advisory sources. `npm` (the registry's bulk advisory endpoint) needs no credentials;
-# `github` uses the GitHub Advisory Database with GH_TOKEN. Several sources are merged conservatively.
+# Advisory sources. `npm` (the registry's bulk advisory endpoint) and `osv` (osv.dev, every
+# ecosystem) need no credentials; `github` uses the GitHub Advisory Database with GH_TOKEN.
+# Several sources are merged by advisory ID, taking the union of affected ranges.
 advisoryProviders: [npm]
 
 autoMerge: true

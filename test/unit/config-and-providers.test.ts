@@ -29,7 +29,8 @@ describe("config", () => {
   it("rejects unknown keys and bad values instead of guessing", () => {
     assert.throws(() => parseConfig({ minimumReleaseAge: 3 }), ConfigError);
     assert.throws(() => parseConfig({ minimumReleaseAgeDays: -1 }), ConfigError);
-    assert.throws(() => parseConfig({ advisoryProviders: ["osv"] }), ConfigError);
+    assert.throws(() => parseConfig({ advisoryProviders: ["snyk"] }), ConfigError);
+    assert.deepEqual(parseConfig({ advisoryProviders: ["npm", "osv"] }).advisoryProviders, ["npm", "osv"]);
     assert.throws(() => parseConfig({ keep: [{ name: "x" }] }), ConfigError);
   });
 });

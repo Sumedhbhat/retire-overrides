@@ -1,4 +1,4 @@
-import semver from "semver";
+import { schemeFor } from "../schemes.ts";
 import type { ImplementedAdapter, OverrideWrite, Project } from "../adapters/adapter.ts";
 import { tail } from "../exec.ts";
 import { diffWorktree, withScratch } from "../git.ts";
@@ -75,6 +75,7 @@ async function planGroup(
   const advisoryIds = [...new Set(group.findings.map((f) => f.advisory))].sort();
   const identity = fixIdentity(project.ecosystem, project.manifest, [group.name], advisoryIds);
   const groupKey = fixGroupKey(project.ecosystem, project.manifest, [group.name]);
+  const sch = schemeFor(project.ecosystem);
   const vulnerable = instancesOf(locked, group.name).filter((i) => group.findings.some((f) => f.version === i.version));
   const report: VulnerabilityReport = {
     identity,
@@ -112,7 +113,7 @@ async function planGroup(
     return { report, conclusive: [] };
   }
 
-  if (!vulnerable.some((i) => chooseFixedVersion({ metadata: meta, advisories, current: i.version, now: ctx.now, minAgeDays: 0 }) !== null)) {
+  if (!vulnerable.some((i) => chooseFixedVersion({ metadata: meta, advisories, current: i.version, now: ctx.now, minAgeDays: 0, scheme: sch }) !== null)) {
     report.reasons.push({
       code: "no-fixed-version",
       message: `no published ${group.name} release is outside every known affected range; an override cannot help — replace the package or assess reachability`,
@@ -120,7 +121,7 @@ async function planGroup(
     return { report, conclusive: [groupKey] };
   }
 
-  const plain = (version: string) => !advisories.some((a) => isAffectedBy(version, a));
+  const plain = (version: string) => !advisories.some((a) => isAffectedBy(version, a, sch));
   const verifyInput = { ctx, adapter, project, lockedFindings, base, name: group.name, advisories };
   const planner: Planner = { ctx, adapter, project };
   const strategies: Array<[FixStrategy, () => Promise<Candidate | Reason>]> = [
@@ -226,7 +227,7 @@ async function verify(input: VerifyInput, candidate: Candidate): Promise<Verdict
     return verdict;
   }
   ctx.seen(outcome.graph);
-  const still = instancesOf(outcome.graph, input.name).filter((i) => affectingAdvisories(i.version, input.advisories).length > 0);
+  const still = instancesOf(outcome.graph, input.name).filter((i) => affectingAdvisories(i.version, input.advisories, schemeFor(project.ecosystem)).length > 0);
   for (const i of still) {
     verdict.reasons.push({
       code: "still-vulnerable",
@@ -255,7 +256,7 @@ async function verify(input: VerifyInput, candidate: Candidate): Promise<Verdict
     }
     verdict.changed.push(evidence);
     const previous = [...input.base.nodes.values()].filter((n) => n.name === name && n.importer === undefined).map((n) => n.version);
-    if (previous.length > 0 && previous.every((p) => isMajorChange(p, version))) verdict.major = true;
+    if (previous.length > 0 && previous.every((p) => isMajorChange(p, version, schemeFor(project.ecosystem)))) verdict.major = true;
   }
   if (verdict.major) verdict.blockers.push("major-version change: needs human review before merging");
   if (outcome.files.length === 0) verdict.reasons.push({ code: "no-change", message: "the candidate produced no file changes" });
@@ -278,7 +279,7 @@ async function overrideUpdate(
   const writes: Array<{ entry: OverrideEntry; value: string; major: boolean }> = [];
   for (const entry of governing) {
     const current = vulnerable.find((i) => i.paths.some((p) => adapter.overrideApplies(entry, p)))!.version;
-    const choice = chooseFixedVersion({ metadata: meta, advisories, current, now: ctx.now, minAgeDays: ctx.config.minimumReleaseAgeDays });
+    const choice = chooseFixedVersion({ metadata: meta, advisories, current, now: ctx.now, minAgeDays: ctx.config.minimumReleaseAgeDays, scheme: schemeFor(project.ecosystem) });
     if (choice === null) return { code: "no-fixed-version", message: `no fixed release above ${current} for override ${entry.selector}` };
     writes.push({ entry, value: choice.version, major: choice.major });
   }
@@ -326,7 +327,7 @@ async function normalFix(
   const refresh = [...new Set([name, ...steps.flatMap((s) => (s.refresh ? [s.refresh] : []))])].sort();
   if (refreshOnly && bumps.length > 0) return { code: "needs-parent-update", message: "a refresh within existing ranges is not enough" };
   if (!refreshOnly && bumps.length === 0 && refresh.length === 1) return { code: "refresh-suffices", message: "covered by lockfile-refresh" };
-  const major = bumps.some((b) => isMajorChange(b.from, b.to));
+  const major = bumps.some((b) => isMajorChange(b.from, b.to, schemeFor(project.ecosystem)));
   if (bumps.length === 0) {
     return {
       kind: "lockfile-refresh",
@@ -371,20 +372,21 @@ async function fixEdge(
   const childMeta = await ctx.package(edge.child.name);
   // A replacement parent must not bring its own known vulnerability.
   const childAdvisories = await ctx.allAdvisories(ecosystem, edge.child.name);
-  const ok = async (v: string) => !childAdvisories.some((a) => isAffectedBy(v, a)) && (await wanted(v));
+  const sch = schemeFor(ecosystem);
+  const ok = async (v: string) => !childAdvisories.some((a) => isAffectedBy(v, a, sch)) && (await wanted(v));
   const declared = await ctx.declaredRange(edge.parent, edge.as);
-  const spec = declared === undefined ? null : parseSpec(edge.as, declared);
+  const spec = declared === undefined ? null : parseSpec(edge.as, declared, sch);
   if (spec !== null) {
-    const best = maxSatisfying(childMeta, spec.range, ctx.now);
+    const best = maxSatisfying(childMeta, spec.range, ctx.now, sch);
     if (best !== null && (await ok(best))) return [{ refresh: edge.child.name }];
   }
   if (edge.parent.importer !== undefined) {
     // Direct dependency: the smallest release that fixes it, preferring the current line.
-    const candidates = availableVersions(childMeta, ctx.now).filter(
-      (v) => semver.prerelease(v) === null && !childMeta.versions[v]?.deprecated && semver.gt(v, edge.child.version),
+    const candidates = availableVersions(childMeta, ctx.now, sch).filter(
+      (v) => !sch.isPrerelease(v) && !childMeta.versions[v]?.deprecated && sch.compare(v, edge.child.version) > 0,
     );
-    const line = compatibleLine(edge.child.version);
-    const ordered = [...candidates.filter((v) => compatibleLine(v) === line), ...candidates.filter((v) => compatibleLine(v) !== line)];
+    const line = compatibleLine(edge.child.version, sch);
+    const ordered = [...candidates.filter((v) => compatibleLine(v, sch) === line), ...candidates.filter((v) => compatibleLine(v, sch) !== line)];
     for (const v of ordered) {
       if (await ok(v)) {
         return [{ bump: { importer: edge.parent.importer, name: edge.as, from: edge.child.version, to: v } }];
@@ -397,9 +399,9 @@ async function fixEdge(
   const parentOk = async (pv: string): Promise<boolean> => {
     const range = declaredRangeIn(parentMeta.versions[pv], edge.as);
     if (range === undefined) return true;
-    const s = parseSpec(edge.as, range);
+    const s = parseSpec(edge.as, range, sch);
     if (s === null) return false;
-    const best = maxSatisfying(childMeta, s.range, ctx.now);
+    const best = maxSatisfying(childMeta, s.range, ctx.now, sch);
     return best !== null && (await ok(best));
   };
   const steps: Step[] = [];
@@ -424,7 +426,7 @@ async function addOverride(
 ): Promise<Candidate | Reason> {
   const choices = new Map<string, { version: string; major: boolean }>();
   for (const instance of vulnerable) {
-    const choice = chooseFixedVersion({ metadata: meta, advisories, current: instance.version, now: ctx.now, minAgeDays: ctx.config.minimumReleaseAgeDays });
+    const choice = chooseFixedVersion({ metadata: meta, advisories, current: instance.version, now: ctx.now, minAgeDays: ctx.config.minimumReleaseAgeDays, scheme: schemeFor(project.ecosystem) });
     if (choice === null) return { code: "no-fixed-version", message: `no fixed release at or above ${meta.name}@${instance.version}` };
     choices.set(instance.nodeKey, choice);
   }
@@ -452,7 +454,7 @@ async function addOverride(
     writes = [...parentScopes.values()].map((p) => ({ target: { name: meta.name }, scope: [p.scope], value: p.value }));
   } else {
     const byLine = new Map<string, string>();
-    for (const instance of vulnerable) byLine.set(compatibleLine(instance.version), choices.get(instance.nodeKey)!.version);
+    for (const instance of vulnerable) byLine.set(compatibleLine(instance.version, schemeFor(project.ecosystem)), choices.get(instance.nodeKey)!.version);
     if (caps.versionSelector) {
       writes = [...byLine].map(([line, value]) => ({ target: { name: meta.name, range: line }, scope: [], value }));
     } else if (byLine.size === 1) {

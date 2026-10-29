@@ -5,6 +5,7 @@ import { versionsByName } from "../graph.ts";
 import type { RegistryClient } from "../registry/registry.ts";
 import { declaredRangeIn } from "../registry/registry.ts";
 import type { Advisory, EcosystemId, GraphNode, PackageMetadata, ResolvedGraph } from "../types.ts";
+import { schemeFor } from "../schemes.ts";
 import { affectingAdvisories } from "../versions.ts";
 import type { AdvisoryRef } from "./report.ts";
 
@@ -69,7 +70,7 @@ export class EngineContext {
     if (cached === undefined) {
       cached = (async () => {
         const meta = await this.package(name);
-        const answer = await this.options.advisories.advisoriesFor(ecosystem, new Map([[name, Object.keys(meta.versions)]]));
+        const answer = await this.options.advisories.advisoriesFor(ecosystem, new Map([[name, Object.keys(meta.versions)]]), { allVersions: true });
         return answer.get(name) ?? [];
       })();
       this.allAdvisoriesCache.set(key, cached);
@@ -87,7 +88,7 @@ export class EngineContext {
       const advisories = answer.get(name);
       if (advisories === undefined) throw new Error(`advisory provider returned no answer for ${name}`);
       for (const version of list) {
-        for (const a of affectingAdvisories(version, advisories)) findings.push({ name, version, advisory: a.id });
+        for (const a of affectingAdvisories(version, advisories, schemeFor(ecosystem))) findings.push({ name, version, advisory: a.id });
       }
     }
     return findings;

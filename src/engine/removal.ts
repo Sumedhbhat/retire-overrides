@@ -1,7 +1,8 @@
 import type { ImplementedAdapter, Project } from "../adapters/adapter.ts";
 import { diffWorktree, withScratch } from "../git.ts";
 import { addedVersions, formatPath, incomingEdges, instancesOf } from "../graph.ts";
-import type { Advisory, OverrideEntry, PackageMetadata, Reason, ResolvedGraph } from "../types.ts";
+import { schemeFor } from "../schemes.ts";
+import type { Advisory, EcosystemId, OverrideEntry, PackageMetadata, Reason, ResolvedGraph } from "../types.ts";
 import {
   affectingAdvisories,
   ageInDays,
@@ -54,6 +55,7 @@ export async function evaluateRemoval(
   projectBlockers: string[],
 ): Promise<RemovalResult> {
   const identity = removalIdentity(entry.ecosystem, entry.file, entry.selector);
+  const sch = schemeFor(entry.ecosystem);
   const { intent, provenance } = await intentAndProvenance(ctx, adapter, project, baseDir, entry);
   const report: OverrideReport = {
     identity,
@@ -138,7 +140,7 @@ export async function evaluateRemoval(
       ? "all"
       : new Set(governed.map((p) => parentKey(p.steps.at(-2), p.importer)));
     governedParents.set(instance.nodeKey, parents);
-    const hits = affectingAdvisories(instance.version, advisories).map((a) => a.id);
+    const hits = affectingAdvisories(instance.version, advisories, sch).map((a) => a.id);
     instances.push({
       version: instance.version,
       affectedBy: hits,
@@ -171,7 +173,7 @@ export async function evaluateRemoval(
         block("constraint-unknown", `${parentLabel} has no recorded range for ${edge.as}`);
         continue;
       }
-      const spec = parseSpec(edge.as, declared);
+      const spec = parseSpec(edge.as, declared, sch);
       if (spec === null) {
         block("constraint-unparseable", `${parentLabel} declares ${edge.as}@"${declared}", which is not a registry range`);
         continue;
@@ -179,9 +181,9 @@ export async function evaluateRemoval(
       // A peer range doesn't pick a version: the copy comes from another edge (checked on its own) or
       // from auto-install, which takes the highest satisfying release. Judge peers by that pick.
       const peer = await ctx.isPeerEdge(edge.parent, edge.as).catch(() => false);
-      let permits = permittedVulnerableVersions(spec.range, targetMeta, advisories);
+      let permits = permittedVulnerableVersions(spec.range, targetMeta, advisories, sch);
       if (peer) {
-        const pick = maxSatisfying(targetMeta, spec.range, ctx.now);
+        const pick = maxSatisfying(targetMeta, spec.range, ctx.now, sch);
         permits = pick !== null && permits.includes(pick) ? [pick] : [];
       }
       constraints.push({ parent: parentLabel, dependency: edge.as, range: declared, permitsVulnerable: permits, ...(peer ? { peer: true } : {}) });
@@ -191,7 +193,7 @@ export async function evaluateRemoval(
           `${parentLabel} declares ${edge.as}@${declared}, which still permits vulnerable ${summarizeVersions(permits)}`,
         );
         if (edge.parent.importer === undefined) {
-          const context = await upstreamContext(ctx, edge.parent.name, edge.as).catch(() => undefined);
+          const context = await upstreamContext(ctx, entry.ecosystem, edge.parent.name, edge.as).catch(() => undefined);
           if (context) upstream.push(context);
         }
       }
@@ -237,7 +239,7 @@ export async function evaluateRemoval(
     }
     changed.push(evidence);
     const previous = [...before.nodes.values()].filter((n) => n.name === name && n.importer === undefined).map((n) => n.version);
-    if (previous.length > 0 && previous.every((p) => isMajorChange(p, version))) {
+    if (previous.length > 0 && previous.every((p) => isMajorChange(p, version, sch))) {
       blockers.push(`${name} moves from ${[...new Set(previous)].join(", ")} to ${version}, a major-version change`);
     }
   }
@@ -295,9 +297,10 @@ function summarizeVersions(versions: string[]): string {
 }
 
 /** What the newest release of a parent declares for the dependency, for stale-override issues. */
-async function upstreamContext(ctx: EngineContext, parent: string, dep: string): Promise<string> {
+async function upstreamContext(ctx: EngineContext, ecosystem: EcosystemId, parent: string, dep: string): Promise<string> {
   const meta = await ctx.package(parent);
-  const latest = availableVersions(meta, ctx.now).filter((v) => !v.includes("-")).at(-1);
+  const sch = schemeFor(ecosystem);
+  const latest = availableVersions(meta, ctx.now, sch).filter((v) => !sch.isPrerelease(v)).at(-1);
   if (latest === undefined) return `${parent}: no published release found`;
   const v = meta.versions[latest];
   const range = v?.dependencies[dep] ?? v?.optionalDependencies[dep] ?? v?.peerDependencies[dep];

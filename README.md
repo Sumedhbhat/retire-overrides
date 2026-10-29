@@ -127,6 +127,8 @@ If Dependabot or Renovate already has an open PR touching the package, the fix i
 
 Overrides on the `keep` list are reported as kept and never evaluated.
 
+Advisory data comes from the npm registry's bulk advisory endpoint by default. `advisoryProviders` can add [OSV](https://osv.dev) (`osv`, which covers every ecosystem) and the GitHub Advisory Database (`github`). When several are configured, their answers are merged by advisory ID and the affected ranges are combined, so a disagreement counts as vulnerable. If any configured source fails, the run is BLOCKED rather than clean.
+
 [docs/how-it-works.md](docs/how-it-works.md) covers the exact rules, the evidence each status records, and the JSON report.
 
 ### No ledger
