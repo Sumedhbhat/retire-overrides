@@ -80,7 +80,8 @@ describe("CLI", () => {
     const adapters = await cli(["adapters"]);
     assert.match(adapters.stdout, /^npm\s+implemented/m);
     assert.match(adapters.stdout, /^yarn\s+implemented/m);
-    assert.match(adapters.stdout, /^uv\s+planned/m);
+    assert.match(adapters.stdout, /^uv\s+implemented/m);
+    assert.match(adapters.stdout, /^cargo\s+planned/m);
   });
 
   it("rejects publishing a replay and bad options with exit code 2", async () => {

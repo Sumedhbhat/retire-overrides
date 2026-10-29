@@ -10492,6 +10492,12 @@ var PlannedAdapter = class {
 };
 var plannedAdapters = [
   new PlannedAdapter(
+    "cargo",
+    "[patch.*] and [replace] in Cargo.toml, plus dependency version requirements",
+    "[patch] replaces a source; it is not a general way to force a registry version, so a plain lockfile update is preferred.",
+    [{ files: ["Cargo.toml"], pattern: /^\s*\[(patch\.|replace\])/m, mechanism: "Cargo `[patch]`/`[replace]`" }]
+  ),
+  new PlannedAdapter(
     "go",
     "`replace` directives and raised `require` versions in go.mod",
     "`// indirect` marks an indirect dependency, not an override, and is never deleted on that basis.",
