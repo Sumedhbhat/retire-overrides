@@ -47,7 +47,31 @@ Semantics: a Bun nested override applies only when the scope is the **direct par
 
 Resolution: `bun install --lockfile-only --ignore-scripts`. To avoid trusting locked versions, the adapter deletes the affected packages' entries from bun.lock first. It doesn't use `bun update <pkg>`, because on 1.3.x that adds a transitive package to package.json as a direct dependency.
 
-### npm, pnpm and Bun
+### Yarn (implemented)
+
+The line is chosen from the pinned version (`packageManager`, or the `yarnPath` release in `.yarnrc.yml`), else the installed one. Verified against Yarn 1.22.22 and 4.18.1 (plus a repository pinned to 3.4.1):
+
+| | Yarn Classic (1.x) | Yarn 2+ |
+|---|---|---|
+| Location | `resolutions` in the root package.json | same |
+| `pkg` | every copy | every copy |
+| `parent/pkg` | only where the **whole path from the root** is `parent > pkg`, so `parent` must be a direct dependency | wherever `parent` is the **direct parent** |
+| `**/parent/pkg`, `a/**/pkg`, `a/b/pkg` | full-path globs, honored | **silently ignored**: reported as unsupported |
+| `pkg@range`, `parent@range/pkg` | **install fails**: reported as unsupported, and the project's resolutions are BLOCKED until removed | honored, but the descriptor matches the *requested* range string, which dependency paths don't record: reported as unsupported, not evaluated |
+| Values | semver versions and ranges (`npm:` prefix allowed) | same; `patch:`, `portal:`, `link:`, `file:`, git and alias values are reported, not evaluated |
+| Lockfile | `# yarn lockfile v1` | YAML with `__metadata` (any cacheKey/version) |
+| Workspaces | root `workspaces` globs | `workspace:` entries in the lockfile |
+| Peer dependencies | never installed, so no peer edges exist | recorded and judged like npm's |
+
+New overrides use the narrowest key each line honors: `**/parent/pkg` on Classic (the `**/` keeps "direct child of parent" anywhere in the tree) and `parent/pkg` on Yarn 2+. Neither line has a version selector with npm's meaning, so when too many parents need scoping the planner falls back to one global key if a single version fixes every copy, and returns BLOCKED otherwise.
+
+Resolution:
+- **Yarn 2+:** `yarn install --mode=update-lockfile` with `enableScripts: false`. Nothing is linked and no `node_modules` is created. The repository's committed `yarnPath` release and plugins run, as they would in its own CI. Yarn 2+ never resolves a version without a publish time, so a missing date can't let an undated release in.
+- **Classic:** there is no lockfile-only mode. `yarn install --ignore-scripts` fetches and extracts packages into a throwaway modules folder, then the lockfile is kept. Lifecycle scripts never run, but this is a weaker guarantee than the other adapters: tarballs are downloaded.
+- **Refresh:** the adapter deletes the affected packages' blocks from yarn.lock before installing, and both lines re-resolve just those packages. Measured on real repositories, refreshing one package changed only that package's entries: `acorn` in facebook/prop-types (Classic) and `semver` in TypeStrong/ts-node (Yarn 3.4.1). `yarn up -R` was rejected because it links and builds packages.
+- **Snapshot replay:** registry, cache and global folders are isolated per run. Classic fetches each entry's recorded `resolved` URL, so those are pointed at the replay registry, and checksums are refreshed because the replay serves synthetic tarballs.
+
+### npm, pnpm, Bun and Yarn
 
 - If the pinned package-manager major differs from the installed one, every override in that project is BLOCKED. Enable Corepack (the action does) or install the pinned version.
 - Declared ranges come from the lockfile when it records them (npm), and otherwise from the published manifest in the registry (pnpm).
@@ -56,13 +80,6 @@ Resolution: `bun install --lockfile-only --ignore-scripts`. To avoid trusting lo
 ## Planned adapters
 
 Each planned adapter is already registered. For now it only *detects*: when its mechanism is present, the report lists it as unsupported and evaluates nothing. Here is the design each one must follow. The defining rule is that these mechanisms are not equivalent, and every adapter has to be honest about the difference.
-
-### Yarn: `resolutions`
-
-- **Discovery:** `resolutions` in the root package.json. Branch on the pinned Yarn version. Classic (1.x) uses glob-like patterns (`**/pkg`, `parent/pkg`). Modern Yarn (2+) uses descriptors (`pkg@npm:^1.0.0`, `parent/pkg`).
-- **Graph:** Classic `yarn.lock` (custom format) and Berry `yarn.lock` (YAML with `resolution:`/`dependencies:` entries).
-- **Resolution:** modern `yarn install --mode=update-lockfile` (no linking, no scripts). Classic has no lockfile-only mode, so it needs `--ignore-scripts --frozen-lockfile=false` in an isolated cache, and it should be marked as a weaker guarantee.
-- **Narrowest scope:** `parent/pkg` in both lines.
 
 ### Python / uv: `override-dependencies`, `constraint-dependencies`
 

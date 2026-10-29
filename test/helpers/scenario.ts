@@ -9,6 +9,7 @@ import type { ImplementedAdapter, Project } from "../../src/adapters/adapter.ts"
 import { BunAdapter } from "../../src/adapters/bun/bun.ts";
 import { NpmAdapter } from "../../src/adapters/npm/npm.ts";
 import { PnpmAdapter } from "../../src/adapters/pnpm/pnpm.ts";
+import { YarnAdapter } from "../../src/adapters/yarn/yarn.ts";
 import { type Config, DEFAULT_CONFIG } from "../../src/config.ts";
 import type { AlertsInput } from "../../src/engine/alerts.ts";
 import type { ExternalChange } from "../../src/engine/context.ts";
@@ -19,7 +20,7 @@ import { startSnapshotRegistry } from "../../src/metadata/server.ts";
 import type { MetadataSnapshot } from "../../src/metadata/snapshot.ts";
 import { NpmRegistryClient } from "../../src/registry/registry.ts";
 
-export type Manager = "npm" | "pnpm" | "bun";
+export type Manager = "npm" | "pnpm" | "bun" | "yarn";
 
 export interface FixtureRepo {
   dir: string;
@@ -56,7 +57,13 @@ export async function fixtureRepo(manager: Manager, files: Record<string, string
     async lock(snapshot, at, refresh = []) {
       const server = await startSnapshotRegistry(snapshot, { now: new Date(at) });
       try {
-        const adapter: ImplementedAdapter = manager === "npm" ? new NpmAdapter() : manager === "pnpm" ? new PnpmAdapter() : new BunAdapter();
+        const adapters: Record<Manager, ImplementedAdapter> = {
+          npm: new NpmAdapter(),
+          pnpm: new PnpmAdapter(),
+          bun: new BunAdapter(),
+          yarn: new YarnAdapter(),
+        };
+        const adapter = adapters[manager];
         const project = await detectProject(adapter, dir);
         await adapter.resolve(project, dir, { refresh, registry: server.url });
       } finally {
@@ -108,7 +115,7 @@ async function detectProject(adapter: ImplementedAdapter, dir: string): Promise<
     ecosystem: adapter.id,
     dir: "",
     manifest: "package.json",
-    lockfile: { npm: "package-lock.json", pnpm: "pnpm-lock.yaml", bun: "bun.lock" }[adapter.id as Manager],
+    lockfile: LOCKFILES[adapter.id as Manager],
     packageManager: { name: adapter.id, installed, ...(pinned ? { pinned } : {}) },
   };
 }
@@ -131,4 +138,9 @@ export async function installedVersion(command: Manager): Promise<string> {
 
 export { allAdapters };
 
-export const LOCKFILES: Record<Manager, string> = { npm: "package-lock.json", pnpm: "pnpm-lock.yaml", bun: "bun.lock" };
+export const LOCKFILES: Record<Manager, string> = {
+  npm: "package-lock.json",
+  pnpm: "pnpm-lock.yaml",
+  bun: "bun.lock",
+  yarn: "yarn.lock",
+};

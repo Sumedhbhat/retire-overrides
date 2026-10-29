@@ -9362,7 +9362,7 @@ var require_dist = __commonJS({
 });
 
 // src/cli.ts
-import { appendFile, readFile as readFile8, writeFile as writeFile6 } from "node:fs/promises";
+import { appendFile, readFile as readFile9, writeFile as writeFile7 } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -10311,12 +10311,6 @@ var PlannedAdapter = class {
 };
 var plannedAdapters = [
   new PlannedAdapter(
-    "yarn",
-    "`resolutions` in package.json",
-    "Classic (v1) and modern (v2+) Yarn differ in selector syntax and lockfile format; behavior must branch on the pinned Yarn version.",
-    [{ files: ["package.json"], pattern: /"resolutions"\s*:/, mechanism: "Yarn `resolutions`", sibling: "yarn.lock" }]
-  ),
-  new PlannedAdapter(
     "uv",
     "`override-dependencies` and `constraint-dependencies` under [tool.uv]",
     "Constraints only narrow what resolution may pick; overrides replace declared requirements. Ordinary constraints are never removed blindly.",
@@ -10687,9 +10681,422 @@ function refToKey(name, ref, importerId) {
   return `${name}@${ref}`;
 }
 
+// src/adapters/yarn/yarn.ts
+var import_semver5 = __toESM(require_semver2(), 1);
+var import_yaml2 = __toESM(require_dist(), 1);
+import { access as access2, mkdtemp as mkdtemp4, readFile as readFile6, rm as rm4, unlink as unlink2, writeFile as writeFile4 } from "node:fs/promises";
+import { tmpdir as tmpdir4 } from "node:os";
+import { join as join6, posix as posix5 } from "node:path";
+function yarnLine(version) {
+  return (import_semver5.default.coerce(version)?.major ?? 1) >= 2 ? "berry" : "classic";
+}
+function parseResolutionKey(key) {
+  return { segments: splitKey(key).map((s) => s === "**" ? { name: "**" } : parseSelector(s)) };
+}
+function classicPatternMatches(segments, names) {
+  const pattern = segments.length === 1 && segments[0] !== "**" ? ["**", ...segments] : segments;
+  const match = (p, n) => {
+    if (p === pattern.length) return n === names.length;
+    if (pattern[p] === "**") return match(p + 1, n) || n < names.length && match(p, n + 1);
+    return n < names.length && pattern[p] === names[n] && match(p + 1, n + 1);
+  };
+  return match(0, 0);
+}
+function registryRange(value) {
+  const v = value.startsWith("npm:") ? value.slice(4) : value;
+  if (/^[^@\s]+@/.test(v) && !/^[\d^~<>=*xX]/.test(v)) return null;
+  return parseSpec("x", v) === null ? null : v;
+}
+var YarnAdapter = class {
+  id = "yarn";
+  support = "implemented";
+  mechanisms = "`resolutions` in the root package.json: Classic path globs (`pkg`, `**/pkg`, `a/b/pkg`, `a/**/pkg`); Berry `pkg`, `pkg@descriptor` and `parent/pkg` keys";
+  limitations = "Classic matches a key against the full path from the root and fails on `pkg@range` keys; it has no lockfile-only mode, so resolution fetches and extracts packages into a throwaway folder (scripts never run). Berry silently ignores `**` globs and deeper paths, and applies `parent/pkg` to direct children only. Berry runs the repository's committed yarnPath release and plugins. Non-registry values (patch:, portal:, link:, file:, aliases) are reported, not evaluated.";
+  async detect(repo) {
+    const projects = [];
+    const unsupported = [];
+    for (const lockfile of await findFiles(repo, /* @__PURE__ */ new Set(["yarn.lock"]))) {
+      const dir = posix5.dirname(lockfile) === "." ? "" : posix5.dirname(lockfile);
+      const manifest = projectPath(dir, "package.json");
+      let data;
+      try {
+        data = (await readJsonDocument(join6(repo, manifest))).data;
+      } catch {
+        unsupported.push({ ecosystem: "yarn", file: lockfile, message: "lockfile has no readable package.json beside it" });
+        continue;
+      }
+      const installed = await cliVersion("yarn", join6(repo, dir)) ?? "0.0.0";
+      const pinned = pinnedVersion(data, "yarn") ?? await yarnPathVersion(join6(repo, dir));
+      projects.push({
+        ecosystem: "yarn",
+        dir,
+        manifest,
+        lockfile,
+        packageManager: { name: "yarn", installed, ...pinned ? { pinned } : {} }
+      });
+    }
+    return { projects, unsupported };
+  }
+  preflight(project) {
+    if (project.packageManager.installed === "0.0.0") return ["yarn is not installed"];
+    return packageManagerMismatch("yarn", project.packageManager.installed, project.packageManager.pinned);
+  }
+  line(project) {
+    return yarnLine(project.packageManager.pinned ?? project.packageManager.installed);
+  }
+  overrideCapabilities() {
+    return { parentScope: true, versionSelector: false };
+  }
+  async readOverrides(project, dir) {
+    const entries = [];
+    const unsupported = [];
+    const root = (await readJsonDocument(join6(dir, project.manifest))).data;
+    const file = project.manifest;
+    const line = this.line(project);
+    const report = (selector, message) => unsupported.push({ ecosystem: "yarn", file, selector, message });
+    const block = root.resolutions;
+    if (block !== void 0 && !isRecord(block)) report("resolutions", "resolutions is not an object");
+    for (const [key, value] of Object.entries(isRecord(block) ? block : {})) {
+      if (typeof value !== "string") {
+        report(key, "resolution value is not a string");
+        continue;
+      }
+      const { segments } = parseResolutionKey(key);
+      const target = segments.at(-1);
+      if (target.name === "**" || segments.length === 0) {
+        report(key, "resolution key does not end in a package name");
+        continue;
+      }
+      if (line === "classic" && segments.some((s) => s.range !== void 0)) {
+        report(key, "Yarn Classic fails on version-selected resolution keys");
+        continue;
+      }
+      if (line === "berry" && (segments.length > 2 || segments.some((s) => s.name === "**"))) {
+        report(key, "Yarn 2+ silently ignores `**` globs and paths deeper than parent/package");
+        continue;
+      }
+      if (line === "berry" && segments.some((s) => s.range !== void 0)) {
+        report(key, "Yarn 2+ applies `pkg@descriptor` keys only where that exact range is requested; these keys are not evaluated yet");
+        continue;
+      }
+      if (registryRange(value) === null) {
+        report(key, `resolution value "${value}" is not a registry version range (patch:, portal:, link:, file:, git and alias values are not evaluated)`);
+        continue;
+      }
+      entries.push({
+        ecosystem: "yarn",
+        file,
+        project: project.dir,
+        selector: key,
+        keyPath: ["resolutions", key],
+        target: target.range !== void 0 ? { name: target.name, range: target.range.replace(/^npm:/, "") } : { name: target.name },
+        scope: segments.slice(0, -1).map((s) => s.range !== void 0 ? { name: s.name, range: s.range.replace(/^npm:/, "") } : { name: s.name }),
+        value,
+        ...line === "classic" ? { pathGlob: true } : {}
+      });
+    }
+    return { entries, unsupported };
+  }
+  selectorFor(target, scope) {
+    const parent = scope.at(-1);
+    if (!parent) return target.name;
+    return `**/${parent.name}/${target.name}`;
+  }
+  berrySelectorFor(target, scope) {
+    const parent = scope.at(-1);
+    return parent ? `${parent.name}/${target.name}` : target.name;
+  }
+  overrideApplies(entry, path) {
+    const last = path.steps.at(-1);
+    if (!last || last.name !== entry.target.name) return false;
+    if (entry.pathGlob) {
+      return classicPatternMatches([...entry.scope, entry.target].map((s) => s.name), path.steps.map((s) => s.name));
+    }
+    if (entry.scope.length === 0) return true;
+    const parent = path.steps.at(-2);
+    return parent !== void 0 && selectorMatches(entry.scope[0], parent.name, parent.version);
+  }
+  async readGraph(project, dir) {
+    const text = await readFile6(join6(dir, project.lockfile), "utf8");
+    const root = (await readJsonDocument(join6(dir, project.manifest))).data;
+    const importers = await this.importerManifests(project, dir, root);
+    if (/^# yarn lockfile v1$/m.test(text) || text.trim() === "") return classicGraph(text, importers);
+    const lock = (0, import_yaml2.parse)(text);
+    if (!isRecord(lock) || !isRecord(lock.__metadata)) {
+      throw new UnsupportedLockfileError(`${project.lockfile} is neither a Yarn Classic (v1) nor a Yarn 2+ lockfile`);
+    }
+    return berryGraph(lock, isRecord(root.resolutions) ? asStrings(root.resolutions) : {});
+  }
+  /** Root and workspace manifests, keyed by importer path ("" for the root). */
+  async importerManifests(project, dir, root) {
+    const out = /* @__PURE__ */ new Map([["", root]]);
+    const raw = root.workspaces;
+    const globs = Array.isArray(raw) ? raw : isRecord(raw) && Array.isArray(raw.packages) ? raw.packages : [];
+    if (globs.length === 0) return out;
+    const base = join6(dir, project.dir);
+    for (const manifest of await findFiles(base, /* @__PURE__ */ new Set(["package.json"]))) {
+      const path = posix5.dirname(manifest);
+      if (path === "." || !globs.some((g) => typeof g === "string" && classicPatternMatches(g.split("/").map((s) => s === "*" ? "**" : s), path.split("/")))) continue;
+      const data = await readJsonDocument(join6(base, manifest)).then((d) => d.data).catch(() => void 0);
+      if (data) out.set(path, data);
+    }
+    return out;
+  }
+  async resolve(project, dir, options) {
+    const cwd = join6(dir, project.dir);
+    const lockfile = join6(dir, project.lockfile);
+    if (options.refresh.length > 0) await dropLockedPackages2(lockfile, new Set(options.refresh));
+    const scratch = await mkdtemp4(join6(tmpdir4(), "retire-overrides-yarn-"));
+    try {
+      if (this.line(project) === "classic") {
+        const args = [
+          "install",
+          "--ignore-scripts",
+          "--non-interactive",
+          "--no-progress",
+          "--ignore-engines",
+          "--ignore-platform",
+          "--production=false",
+          "--modules-folder",
+          join6(scratch, "node_modules")
+        ];
+        if (options.registry) {
+          args.push("--registry", options.registry, "--cache-folder", join6(scratch, "cache"), "--update-checksums");
+          await retargetResolved(lockfile, options.registry);
+        }
+        await run("yarn", args, { cwd, env: { npm_config_registry: void 0 } });
+      } else {
+        const env = {
+          npm_config_registry: void 0,
+          YARN_ENABLE_IMMUTABLE_INSTALLS: "false",
+          YARN_ENABLE_SCRIPTS: "false",
+          YARN_ENABLE_TELEMETRY: "0",
+          YARN_ENABLE_PROGRESS_BARS: "false"
+        };
+        if (options.registry) {
+          env.YARN_NPM_REGISTRY_SERVER = options.registry.replace(/\/+$/, "");
+          env.YARN_UNSAFE_HTTP_WHITELIST = new URL(options.registry).hostname;
+          env.YARN_ENABLE_GLOBAL_CACHE = "false";
+          env.YARN_CACHE_FOLDER = join6(scratch, "cache");
+          env.YARN_GLOBAL_FOLDER = join6(scratch, "global");
+        }
+        const state = join6(cwd, ".yarn", "install-state.gz");
+        const hadState = await exists2(state);
+        await run("yarn", ["install", "--mode=update-lockfile"], { cwd, env });
+        if (!hadState) await unlink2(state).catch(() => void 0);
+      }
+    } finally {
+      await rm4(scratch, { recursive: true, force: true });
+    }
+  }
+  async removeOverride(_project, dir, entry) {
+    const path = join6(dir, entry.file);
+    const doc = await readJsonDocument(path);
+    const block = doc.data.resolutions;
+    if (isRecord(block)) {
+      delete block[entry.keyPath.at(-1)];
+      if (Object.keys(block).length === 0) delete doc.data.resolutions;
+    }
+    await writeJsonDocument(path, doc);
+  }
+  async writeOverride(project, dir, write) {
+    const path = join6(dir, project.manifest);
+    const doc = await readJsonDocument(path);
+    if (!isRecord(doc.data.resolutions)) doc.data.resolutions = {};
+    const block = doc.data.resolutions;
+    const key = write.replaces?.keyPath.at(-1) ?? (this.line(project) === "classic" ? this.selectorFor(write.target, write.scope) : this.berrySelectorFor(write.target, write.scope));
+    block[key] = write.value;
+    await writeJsonDocument(path, doc);
+    return { file: write.replaces?.file ?? project.manifest, selector: key };
+  }
+  async directSpec(project, dir, importer, name) {
+    const data = (await readJsonDocument(join6(dir, importerManifest4(project, importer)))).data;
+    for (const field of ["dependencies", "optionalDependencies", "devDependencies"]) {
+      const deps = data[field];
+      if (isRecord(deps) && typeof deps[name] === "string") return deps[name];
+    }
+    return void 0;
+  }
+  async setDependencySpec(project, dir, importer, name, spec) {
+    const path = join6(dir, importerManifest4(project, importer));
+    const doc = await readJsonDocument(path);
+    for (const field of ["dependencies", "optionalDependencies", "devDependencies"]) {
+      const deps = doc.data[field];
+      if (isRecord(deps) && typeof deps[name] === "string") {
+        deps[name] = spec;
+        await writeJsonDocument(path, doc);
+        return;
+      }
+    }
+    throw new Error(`${name} is not a direct dependency of ${importer || "the root project"}`);
+  }
+  async locate(_project, dir, entry) {
+    return locateKeyPath(await readFile6(join6(dir, entry.file), "utf8"), entry.keyPath);
+  }
+};
+function importerManifest4(project, importer) {
+  return projectPath(project.dir, importer === "" ? "package.json" : posix5.join(importer, "package.json"));
+}
+async function exists2(path) {
+  try {
+    await access2(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function yarnPathVersion(projectDir) {
+  const rc = await readFile6(join6(projectDir, ".yarnrc.yml"), "utf8").catch(() => "");
+  return /^yarnPath:\s*\S*yarn-(\d+\.\d+\.\d+[^/\s]*)\.c?js\s*$/m.exec(rc)?.[1];
+}
+function nameOf(descriptor) {
+  const at = descriptor.indexOf("@", descriptor.startsWith("@") ? 1 : 0);
+  return at === -1 ? descriptor : descriptor.slice(0, at);
+}
+function headerDescriptors(header) {
+  return header.replace(/:\s*$/, "").split(/,\s*/).map((d) => d.trim().replace(/^"|"$/g, "")).filter((d) => d !== "");
+}
+function parseClassicLock(text) {
+  const out = /* @__PURE__ */ new Map();
+  for (const block of text.split(/\n\s*\n/)) {
+    const lines = block.split("\n").filter((l) => l.trim() !== "" && !l.startsWith("#"));
+    if (lines.length === 0 || /^\s/.test(lines[0])) continue;
+    const descriptors = headerDescriptors(lines[0]);
+    const entry = { name: nameOf(descriptors[0]), version: "0.0.0", dependencies: {}, optional: /* @__PURE__ */ new Set() };
+    let section;
+    for (const line of lines.slice(1)) {
+      const m = /^( +)("?[^"\s]+"?) +"?([^"]*)"?$/.exec(line);
+      const header = /^ {2}(\w+):$/.exec(line);
+      if (header) {
+        section = header[1];
+        continue;
+      }
+      if (!m) continue;
+      const [, indent, rawKey, value] = m;
+      const key = rawKey.replace(/^"|"$/g, "");
+      if (indent.length === 2) {
+        section = void 0;
+        if (key === "version") entry.version = value;
+      } else if (indent.length === 4 && (section === "dependencies" || section === "optionalDependencies")) {
+        entry.dependencies[key] = value;
+        if (section === "optionalDependencies") entry.optional.add(key);
+      }
+    }
+    for (const d of descriptors) out.set(d, entry);
+  }
+  return out;
+}
+function classicGraph(text, importers) {
+  const entries = parseClassicLock(text);
+  const nodes = /* @__PURE__ */ new Map();
+  const keyOf = (e) => `${e.name}@${e.version}`;
+  for (const e of new Set(entries.values())) {
+    nodes.set(keyOf(e), { key: keyOf(e), name: e.name, version: e.version, declared: e.dependencies, children: /* @__PURE__ */ new Map(), peers: /* @__PURE__ */ new Set() });
+  }
+  const workspaceByName = /* @__PURE__ */ new Map();
+  const importerKeys = [];
+  for (const [path, manifest] of importers) {
+    const key = `importer:${path}`;
+    const declared = { ...asStrings(manifest.optionalDependencies), ...asStrings(manifest.devDependencies), ...asStrings(manifest.dependencies) };
+    nodes.set(key, { key, name: typeof manifest.name === "string" ? manifest.name : path || "(root)", version: "0.0.0", declared, children: /* @__PURE__ */ new Map(), importer: path });
+    importerKeys.push(key);
+    if (path !== "" && typeof manifest.name === "string") workspaceByName.set(manifest.name, key);
+  }
+  for (const node of nodes.values()) {
+    for (const [dep, range] of Object.entries(node.declared ?? {})) {
+      const entry = entries.get(`${dep}@${range}`);
+      if (entry) node.children.set(dep, keyOf(entry));
+      else if (workspaceByName.has(dep)) node.children.set(dep, workspaceByName.get(dep));
+    }
+  }
+  return { nodes, importers: importerKeys };
+}
+function berryGraph(lock, resolutions) {
+  const nodes = /* @__PURE__ */ new Map();
+  const byDescriptor = /* @__PURE__ */ new Map();
+  const byName = /* @__PURE__ */ new Map();
+  const importers = [];
+  const descriptors = /* @__PURE__ */ new Map();
+  for (const [header, raw] of Object.entries(lock)) {
+    if (header === "__metadata" || !isRecord(raw) || typeof raw.resolution !== "string") continue;
+    const resolution = raw.resolution;
+    const name = nameOf(resolution);
+    const protocol = resolution.slice(name.length + 1);
+    const workspace = /^workspace:(.*)$/.exec(protocol);
+    const key = workspace ? `importer:${workspace[1] === "." ? "" : workspace[1]}` : resolution;
+    const rawDeps = { ...asStrings(raw.peerDependencies), ...asStrings(raw.dependencies) };
+    descriptors.set(key, rawDeps);
+    const declared = {};
+    for (const [dep, d] of Object.entries(rawDeps)) declared[dep] = registryRange(d) ?? d;
+    const node = {
+      key,
+      name,
+      version: workspace ? "0.0.0" : String(raw.version ?? "0.0.0"),
+      declared,
+      children: /* @__PURE__ */ new Map(),
+      peers: peerOnly({ dependencies: raw.dependencies, peerDependencies: raw.peerDependencies })
+    };
+    if (workspace) {
+      node.importer = workspace[1] === "." ? "" : workspace[1];
+      importers.push(key);
+    }
+    nodes.set(key, node);
+    for (const d of headerDescriptors(header)) byDescriptor.set(d, key);
+    byName.set(name, [...byName.get(name) ?? [], key]);
+  }
+  const rules = Object.entries(resolutions).map(([k, v]) => ({ key: parseResolutionKey(k), value: v }));
+  const strip = (r) => r?.replace(/^npm:/, "");
+  const redirect = (parent, dep, descriptor) => {
+    const requested = strip(descriptor);
+    const applicable = rules.filter(({ key }) => {
+      const segs = key.segments;
+      const target = segs.at(-1);
+      if (segs.length > 2 || segs.some((s) => s.name === "**") || target.name !== dep) return false;
+      if (target.range !== void 0 && strip(target.range) !== requested) return false;
+      if (segs.length === 2) {
+        const p = segs[0];
+        if (p.name !== parent.name) return false;
+        if (p.range !== void 0 && !satisfies(parent.version, strip(p.range))) return false;
+      }
+      return true;
+    });
+    const rule = applicable[0];
+    if (!rule) return void 0;
+    return rule.value.includes(":") ? rule.value : `npm:${rule.value}`;
+  };
+  for (const node of nodes.values()) {
+    for (const [dep, descriptor] of Object.entries(descriptors.get(node.key) ?? {})) {
+      const forced = redirect(node, dep, descriptor);
+      let target = byDescriptor.get(`${dep}@${forced ?? descriptor}`) ?? byDescriptor.get(`${dep}@${descriptor}`);
+      if (target === void 0 && descriptor.startsWith("workspace:")) {
+        target = [...nodes.values()].find((n) => n.importer !== void 0 && n.name === dep)?.key;
+      }
+      if (target === void 0 && byName.get(dep)?.length === 1) target = byName.get(dep)[0];
+      if (target !== void 0) node.children.set(dep, target);
+    }
+  }
+  return { nodes, importers };
+}
+async function retargetResolved(lockfile, registry) {
+  const text = await readFile6(lockfile, "utf8").catch(() => void 0);
+  if (text === void 0) return;
+  const base = registry.replace(/\/+$/, "");
+  await writeFile4(lockfile, text.replace(/^( {2}resolved ")https?:\/\/[^/"]+/gm, `$1${base}`));
+}
+async function dropLockedPackages2(lockfile, names) {
+  const text = await readFile6(lockfile, "utf8");
+  const blocks = text.split(/\n(?=\S)/);
+  const kept = blocks.filter((block) => {
+    const header = block.split("\n")[0];
+    if (header.startsWith("#") || header.startsWith("__metadata") || !header.trimEnd().endsWith(":")) return true;
+    return !headerDescriptors(header).some((d) => names.has(nameOf(d)));
+  });
+  await writeFile4(lockfile, kept.join("\n"));
+}
+
 // src/adapters/index.ts
 function allAdapters() {
-  return [new NpmAdapter(), new PnpmAdapter(), new BunAdapter(), ...plannedAdapters];
+  return [new NpmAdapter(), new PnpmAdapter(), new BunAdapter(), new YarnAdapter(), ...plannedAdapters];
 }
 
 // src/advisories/providers.ts
@@ -11048,9 +11455,9 @@ function sameName(a, b, ecosystem) {
 }
 
 // src/config.ts
-var import_yaml2 = __toESM(require_dist(), 1);
-import { readFile as readFile6 } from "node:fs/promises";
-import { join as join6 } from "node:path";
+var import_yaml3 = __toESM(require_dist(), 1);
+import { readFile as readFile7 } from "node:fs/promises";
+import { join as join7 } from "node:path";
 var DEFAULT_CONFIG = {
   minimumReleaseAgeDays: 14,
   staleAfterDays: 90,
@@ -11070,12 +11477,12 @@ async function loadConfig(repo, explicit) {
   for (const candidate of candidates) {
     let text;
     try {
-      text = await readFile6(join6(repo, candidate), "utf8");
+      text = await readFile7(join7(repo, candidate), "utf8");
     } catch {
       if (explicit) throw new ConfigError(`config file ${explicit} not found`);
       continue;
     }
-    return { config: parseConfig((0, import_yaml2.parse)(text), candidate), path: candidate };
+    return { config: parseConfig((0, import_yaml3.parse)(text), candidate), path: candidate };
   }
   return { config: { ...DEFAULT_CONFIG } };
 }
@@ -11166,9 +11573,9 @@ function isImplemented(adapter) {
 }
 
 // src/git.ts
-import { mkdtemp as mkdtemp4, rm as rm4 } from "node:fs/promises";
-import { tmpdir as tmpdir4 } from "node:os";
-import { join as join7 } from "node:path";
+import { mkdtemp as mkdtemp5, rm as rm5 } from "node:fs/promises";
+import { tmpdir as tmpdir5 } from "node:os";
+import { join as join8 } from "node:path";
 var TRAILER = {
   id: "Retire-Overrides-Id",
   action: "Retire-Overrides-Action",
@@ -11186,14 +11593,14 @@ async function isDirty(repo) {
   return (await git(repo, ["status", "--porcelain", "--untracked-files=no"])).trim() !== "";
 }
 async function createScratch(repo, commit) {
-  const parent = await mkdtemp4(join7(tmpdir4(), "retire-overrides-"));
-  const dir = join7(parent, "wt");
+  const parent = await mkdtemp5(join8(tmpdir5(), "retire-overrides-"));
+  const dir = join8(parent, "wt");
   await git(repo, ["worktree", "add", "--quiet", "--detach", dir, commit]);
   return {
     dir,
     async dispose() {
       await git(repo, ["worktree", "remove", "--force", dir], { allowFailure: true });
-      await rm4(parent, { recursive: true, force: true });
+      await rm5(parent, { recursive: true, force: true });
       await git(repo, ["worktree", "prune"], { allowFailure: true });
     }
   };
@@ -11493,7 +11900,7 @@ function errorMessage(error) {
 }
 
 // src/engine/alerts.ts
-import { posix as posix5 } from "node:path";
+import { posix as posix6 } from "node:path";
 var HOST_ECOSYSTEMS = {
   npm: ["npm", "pnpm", "bun", "yarn"],
   pip: ["uv"],
@@ -11506,7 +11913,7 @@ function alertRef(a) {
   return { number: a.number, url: a.url, advisory: a.advisory };
 }
 function alertDir(manifest) {
-  const dir = posix5.dirname(manifest);
+  const dir = posix6.dirname(manifest);
   return dir === "." ? "" : dir;
 }
 function inProject(manifest, projectDir) {
@@ -12652,7 +13059,7 @@ function emptyBaseline() {
 }
 
 // src/metadata/server.ts
-var import_semver5 = __toESM(require_semver2(), 1);
+var import_semver6 = __toESM(require_semver2(), 1);
 import { createHash as createHash2 } from "node:crypto";
 import { createServer } from "node:http";
 import { gunzipSync, gzipSync as gzipSync2 } from "node:zlib";
@@ -12692,7 +13099,7 @@ async function handle(snapshot, now, req, res, baseUrl) {
     const version = tarball[2];
     if (!pkg2?.versions[version]) return send(res, 404, { error: "not found" });
     res.setHeader("content-type", "application/octet-stream");
-    res.end(syntheticTarball(tarball[1], version));
+    res.end(syntheticTarball(tarball[1], version, pkg2.versions[version]));
     return;
   }
   const name = path.slice(1);
@@ -12711,7 +13118,7 @@ function packument(name, pkg, now, baseUrl) {
   const file = name.startsWith("@") ? name.split("/")[1] : name;
   for (const v of visible) {
     const meta = pkg.versions[v];
-    const tgz = syntheticTarball(name, v);
+    const tgz = syntheticTarball(name, v, meta);
     versions[v] = {
       name,
       version: v,
@@ -12727,7 +13134,7 @@ function packument(name, pkg, now, baseUrl) {
     };
     if (pkg.time[v] !== void 0) time[v] = pkg.time[v];
   }
-  const stable = visible.filter((v) => import_semver5.default.valid(v) && import_semver5.default.prerelease(v) === null).sort(import_semver5.default.compare);
+  const stable = visible.filter((v) => import_semver6.default.valid(v) && import_semver6.default.prerelease(v) === null).sort(import_semver6.default.compare);
   const times = Object.values(time).sort();
   if (times.length > 0) {
     time.created = times[0];
@@ -12774,11 +13181,18 @@ function send(res, status, body) {
   res.end(JSON.stringify(body));
 }
 var tarballCache = /* @__PURE__ */ new Map();
-function syntheticTarball(name, version) {
-  const key = `${name}@${version}`;
-  const cached = tarballCache.get(key);
+function syntheticTarball(name, version, meta = {}) {
+  const manifest = JSON.stringify({
+    name,
+    version,
+    ...meta.dependencies ? { dependencies: meta.dependencies } : {},
+    ...meta.optionalDependencies ? { optionalDependencies: meta.optionalDependencies } : {},
+    ...meta.peerDependencies ? { peerDependencies: meta.peerDependencies } : {}
+  });
+  const cached = tarballCache.get(manifest);
   if (cached) return cached;
-  const content = Buffer.from(`${JSON.stringify({ name, version })}
+  const key = manifest;
+  const content = Buffer.from(`${manifest}
 `);
   const header = Buffer.alloc(512);
   header.write("package/package.json", 0, "utf8");
@@ -12804,9 +13218,9 @@ function syntheticTarball(name, version) {
 }
 
 // src/metadata/snapshot.ts
-import { readFile as readFile7, writeFile as writeFile4 } from "node:fs/promises";
+import { readFile as readFile8, writeFile as writeFile5 } from "node:fs/promises";
 async function readSnapshot(path) {
-  const parsed = JSON.parse(await readFile7(path, "utf8"));
+  const parsed = JSON.parse(await readFile8(path, "utf8"));
   if (parsed.schemaVersion !== 1) {
     throw new Error(`${path}: unsupported metadata snapshot schemaVersion ${String(parsed.schemaVersion)}`);
   }
@@ -12856,14 +13270,14 @@ var Recorder = class {
     return { schemaVersion: 1, capturedAt: capturedAt.toISOString(), packages, advisories };
   }
   async save(path, capturedAt) {
-    await writeFile4(path, `${JSON.stringify(this.toSnapshot(capturedAt), null, 2)}
+    await writeFile5(path, `${JSON.stringify(this.toSnapshot(capturedAt), null, 2)}
 `);
   }
 };
 
 // src/publish/directory.ts
-import { mkdir, writeFile as writeFile5 } from "node:fs/promises";
-import { join as join8 } from "node:path";
+import { mkdir, writeFile as writeFile6 } from "node:fs/promises";
+import { join as join9 } from "node:path";
 var DirectoryPublisher = class {
   dir;
   constructor(dir) {
@@ -12874,25 +13288,25 @@ var DirectoryPublisher = class {
   }
   async publish(report) {
     const outcomes = [];
-    await mkdir(join8(this.dir, "changes"), { recursive: true });
-    await mkdir(join8(this.dir, "issues"), { recursive: true });
+    await mkdir(join9(this.dir, "changes"), { recursive: true });
+    await mkdir(join9(this.dir, "issues"), { recursive: true });
     for (const change of report.changes) {
       const name = `${change.kind}-${shortHash(change.identity)}`;
       const { patch, ...meta } = change;
-      await writeFile5(join8(this.dir, "changes", `${name}.patch`), patch);
-      await writeFile5(join8(this.dir, "changes", `${name}.json`), `${JSON.stringify(meta, null, 2)}
+      await writeFile6(join9(this.dir, "changes", `${name}.patch`), patch);
+      await writeFile6(join9(this.dir, "changes", `${name}.json`), `${JSON.stringify(meta, null, 2)}
 `);
-      outcomes.push({ identity: change.identity, kind: "pull-request", action: "created", message: join8(this.dir, "changes", `${name}.patch`) });
+      outcomes.push({ identity: change.identity, kind: "pull-request", action: "created", message: join9(this.dir, "changes", `${name}.patch`) });
     }
     for (const issue of report.issues) {
       const name = `stale-${shortHash(issue.identity)}`;
-      await writeFile5(join8(this.dir, "issues", `${name}.md`), `# ${issue.title}
+      await writeFile6(join9(this.dir, "issues", `${name}.md`), `# ${issue.title}
 
 ${issue.body}
 `);
-      await writeFile5(join8(this.dir, "issues", `${name}.json`), `${JSON.stringify(issue, null, 2)}
+      await writeFile6(join9(this.dir, "issues", `${name}.json`), `${JSON.stringify(issue, null, 2)}
 `);
-      outcomes.push({ identity: issue.identity, kind: "issue", action: "created", message: join8(this.dir, "issues", `${name}.md`) });
+      outcomes.push({ identity: issue.identity, kind: "issue", action: "created", message: join9(this.dir, "issues", `${name}.md`) });
     }
     return outcomes;
   }
@@ -13509,7 +13923,7 @@ ${" ".repeat(21)}${a.limitations}
   let report;
   if (values["from-report"]) {
     if (command !== "publish") throw new UsageError("--from-report only applies to publish");
-    report = JSON.parse(await readFile8(values["from-report"], "utf8"));
+    report = JSON.parse(await readFile9(values["from-report"], "utf8"));
   } else {
     report = await runEvaluation({ repo, now, config, configPath, values, publisher, log });
   }
@@ -13517,7 +13931,7 @@ ${" ".repeat(21)}${a.limitations}
     const json = `${JSON.stringify(report, null, 2)}
 `;
     if (values.json === "-") process.stdout.write(json);
-    else await writeFile6(values.json, json);
+    else await writeFile7(values.json, json);
   }
   if (values.markdown) await appendFile(values.markdown, renderMarkdown(report));
   if (values.json !== "-") {

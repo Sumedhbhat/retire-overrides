@@ -58,6 +58,8 @@ export interface OverrideEntry {
   target: PackageSelector;
   /** Ancestors the override is restricted to, outermost first. Empty means global. */
   scope: PackageSelector[];
+  /** Yarn Classic only: scope and target form a glob over the whole dependency path from the root. */
+  pathGlob?: boolean;
   value: string;
 }
 

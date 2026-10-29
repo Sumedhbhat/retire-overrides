@@ -17,7 +17,7 @@ It ships as three things that share one engine:
 | npm | **Implemented** | `overrides` in the root package.json: global, nested/parent-scoped, version-selected keys, `.` entries, `$name` references |
 | pnpm | **Implemented** | `overrides` in pnpm-workspace.yaml (pnpm 10+) or `pnpm.overrides` in package.json (pnpm ≤ 10), chosen by the pinned pnpm version |
 | Bun | **Implemented** | `overrides`/`resolutions` in package.json with bun.lock. Bun 1.4+ honors parent-scoped and version-selected keys; Bun 1.3 honors only global keys |
-| Yarn | Planned | `resolutions` (Classic and modern) |
+| Yarn | **Implemented** | `resolutions` in package.json with yarn.lock. Classic (1.x) matches keys as whole-path globs; Yarn 2+ honors `pkg` and `parent/pkg` (descriptor keys such as `pkg@range` are reported, not evaluated) |
 | Python / uv | Planned | `override-dependencies`, `constraint-dependencies` |
 | Rust / Cargo | Planned | `[patch]`, `[replace]` |
 | Go | Planned | `replace`, raised `require` |
@@ -104,6 +104,23 @@ GitHub requires that longer reference for any reusable workflow; there is no sho
 
 Untrusted PR code never runs with write credentials either way, and resolution never runs install scripts.
 
+#### What resolution can execute
+
+Resolution turns off lifecycle scripts everywhere (`--ignore-scripts`, `YARN_ENABLE_SCRIPTS=false`, `uv lock --no-build`). Some package managers still load code from the repository while they resolve:
+
+| Package manager | Repository code it loads |
+|---|---|
+| pnpm | `.pnpmfile.cjs` hooks |
+| Yarn 2+ | the committed Yarn release named by `yarnPath`, and `.yarnrc.yml` plugins |
+| npm, Bun, uv, Yarn Classic | none beyond configuration files |
+
+That code runs with whatever the job has. The workflows are split so this stays safe:
+
+- PR checks run in `check` mode with no token and no secrets.
+- Only the default-branch `publish` job holds the write credential, and the default branch is trusted code.
+
+If you run the CLI yourself, don't give it write credentials on code you haven't reviewed.
+
 ## What it does
 
 For each project it finds (a manifest plus the lockfile its package manager owns), it does two things.
@@ -158,7 +175,7 @@ retire-overrides adapters                    # support matrix
 retire-overrides --version
 ```
 
-It needs Node.js 22.18 or later, git, and the package managers your projects use. It evaluates the committed `HEAD` and ignores uncommitted changes. Resolution runs `npm install --package-lock-only --ignore-scripts`, `pnpm install --lockfile-only --ignore-scripts` and `bun install --lockfile-only --ignore-scripts`, so nothing is installed and no lifecycle scripts run. Your application tests still belong in your CI, which runs on the generated PRs.
+It needs Node.js 22.18 or later, git, and the package managers your projects use. It evaluates the committed `HEAD` and ignores uncommitted changes. Resolution runs `npm install --package-lock-only --ignore-scripts`, `pnpm install --lockfile-only --ignore-scripts`, `bun install --lockfile-only --ignore-scripts` and `yarn install --mode=update-lockfile` (scripts disabled), so nothing is installed and no lifecycle scripts run. Yarn Classic is the exception: it has no lockfile-only mode, so it downloads and extracts packages into a throwaway folder, still without running scripts. Your application tests still belong in your CI, which runs on the generated PRs.
 
 ### Reproducing a decision
 
